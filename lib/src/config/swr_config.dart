@@ -22,6 +22,7 @@ class SwrConfig {
     this.onError,
     this.onSuccess,
     this.cache,
+    this.revalidateOnFocus,
   });
 
   /// Default fetcher, resolved by key. `SwrConfig` itself isn't generic —
@@ -41,6 +42,12 @@ class SwrConfig {
   final void Function(Object? data, Object key)? onSuccess;
   final SwrCache? cache;
 
+  /// Whether resuming from the background revalidates this key. Defaults
+  /// to `true`, matching React SWR's `revalidateOnFocus`. Only takes effect
+  /// when a [SwrController] is created for the key — like [retry] and
+  /// [dedupingInterval], it can't be changed for a key once one exists.
+  final bool? revalidateOnFocus;
+
   static final SwrCache _defaultCache = InMemoryCache();
   static const SwrRetryPolicy _defaultRetry = SwrRetryPolicy();
   static const Duration _defaultDedupingInterval = Duration(seconds: 2);
@@ -53,6 +60,7 @@ class SwrConfig {
     dedupingInterval: _defaultDedupingInterval,
     retry: _defaultRetry,
     cache: _defaultCache,
+    revalidateOnFocus: true,
   );
 
   /// This config with any still-unset field filled in from [defaults].
@@ -70,6 +78,7 @@ class SwrConfig {
       onError: child.onError ?? onError,
       onSuccess: child.onSuccess ?? onSuccess,
       cache: child.cache ?? cache,
+      revalidateOnFocus: child.revalidateOnFocus ?? revalidateOnFocus,
     );
   }
 }

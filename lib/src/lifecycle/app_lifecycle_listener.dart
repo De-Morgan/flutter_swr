@@ -57,6 +57,7 @@ class AppLifecycleListener extends WidgetsBindingObserver {
   void _revalidateMountedKeys() {
     final now = DateTime.now();
     for (final controller in registry.controllers) {
+      if (!controller.revalidateOnFocus) continue;
       if (!registry.cache.hasWatchers(controller.key)) continue;
 
       final lastRevalidatedAt = _lastResumeRevalidatedAt[controller.key];

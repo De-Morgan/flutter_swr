@@ -56,6 +56,7 @@ import 'swr_response.dart';
       normalizedKey,
       retryPolicy: resolvedConfig.retry!,
       dedupingInterval: resolvedConfig.dedupingInterval!,
+      revalidateOnFocus: resolvedConfig.revalidateOnFocus!,
     );
   }, [normalizedKey]);
 

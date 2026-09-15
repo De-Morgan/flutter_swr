@@ -133,5 +133,40 @@ void main() {
 
       expect(invocations, 1);
     });
+
+    testWidgets('revalidateOnFocus: false skips resume revalidation', (
+      tester,
+    ) async {
+      final cache = InMemoryCache();
+      var invocations = 0;
+
+      await tester.pumpWidget(
+        SwrProvider(
+          config: SwrConfig(cache: cache),
+          child: HookBuilder(
+            builder: (context) {
+              useSwr<String>(
+                'k',
+                fetcher: () async {
+                  invocations++;
+                  return 'v$invocations';
+                },
+                config: const SwrConfig(revalidateOnFocus: false),
+              );
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(invocations, 1);
+
+      tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      );
+      await tester.pumpAndSettle();
+
+      expect(invocations, 1);
+    });
   });
 }

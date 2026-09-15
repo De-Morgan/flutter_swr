@@ -13,6 +13,7 @@ class SwrController<T> {
     required this.cache,
     required this.dedupManager,
     required this.retryPolicy,
+    this.revalidateOnFocus = true,
   });
 
   /// The already-normalized cache key this controller owns.
@@ -20,6 +21,10 @@ class SwrController<T> {
   final SwrCache cache;
   final DedupManager dedupManager;
   final SwrRetryPolicy retryPolicy;
+
+  /// Whether [AppLifecycleListener][] should revalidate this key when the
+  /// app resumes from the background. See [SwrConfig.revalidateOnFocus].
+  final bool revalidateOnFocus;
 
   /// The most recently supplied fetcher, remembered so a caller that
   /// doesn't have one at hand — cross-key cascade invalidation via
@@ -108,6 +113,7 @@ class SwrControllerRegistry {
     Object normalizedKey, {
     SwrRetryPolicy retryPolicy = const SwrRetryPolicy(),
     Duration dedupingInterval = const Duration(seconds: 2),
+    bool revalidateOnFocus = true,
   }) {
     final existing = _controllers[normalizedKey];
     if (existing != null) {
@@ -118,6 +124,7 @@ class SwrControllerRegistry {
       cache: cache,
       dedupManager: _dedupManager,
       retryPolicy: retryPolicy,
+      revalidateOnFocus: revalidateOnFocus,
     );
     _controllers[normalizedKey] = controller;
     return controller;
