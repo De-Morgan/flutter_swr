@@ -12,7 +12,6 @@ class SwrResponse<T> {
     this.stackTrace,
     required this.isLoading,
     required this.isValidating,
-    this.previousData,
   });
 
   /// The last successfully fetched value, if any.
@@ -34,10 +33,6 @@ class SwrResponse<T> {
   /// True while a fetch (initial or background revalidation) is in
   /// flight, regardless of whether [data] is already populated.
   final bool isValidating;
-
-  /// The previous key's last [data], retained across a key change. Always
-  /// `null` until Phase 16's `keepPreviousData` is implemented.
-  final T? previousData;
 
   /// Maps the current state to [R] using raw `data`/`error` values.
   ///
