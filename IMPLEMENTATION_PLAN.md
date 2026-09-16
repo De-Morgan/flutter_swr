@@ -77,6 +77,7 @@ Phase 13+: Post-MVP features (below)
 - Staleness is **not** stored as a boolean on the entry — compute it at read time from `fetchedAt` + a caller-supplied freshness window, so the same entry can be "stale" under one caller's config and "fresh" under another's (matches PRODUCT_DETAILS.md §10: "staleness is a separate, time-based flag, not deletion").
 
 **Acceptance criteria**:
+
 - Unit tests: set/get/delete round-trip; get on unset key returns `null`; setting a key notifies subscribers; deleting a key notifies subscribers with `null`.
 - No dependency on `flutter_hooks`, `flutter`, or any widget code — this module must be pure Dart so it's trivially unit-testable without `flutter_test`.
 
@@ -88,6 +89,7 @@ Phase 13+: Post-MVP features (below)
 - `null` is a valid key input meaning "don't fetch" — normalization is skipped entirely upstream in the hook (Phase 7/10), not handled here.
 
 **Acceptance criteria**:
+
 - Unit tests: two distinct `List` instances with equal contents normalize to equal (`==`) keys and equal hash codes; a `Record` key works out of the box; a `String` key is returned unchanged (identity-preserving, not just value-equal, to avoid unnecessary allocation).
 
 ## Phase 3 — Request Deduplication Manager
@@ -97,11 +99,12 @@ Phase 13+: Post-MVP features (below)
 - `DedupManager`: `Future<T> run<T>(Object normalizedKey, Future<T> Function() fetcher, {required Duration dedupingInterval})`.
 - Internally tracks `Map<Object, _InFlight>` where `_InFlight` holds the shared `Future` and the `DateTime` it started. A new call for the same key:
   - If an in-flight `Future` exists for that key, return it directly (true dedup — no second fetcher invocation).
-  - Else if the last completed fetch for that key finished within `dedupingInterval`, still start a genuinely new fetch (dedup only collapses *concurrent* calls, not sequential ones after completion — matches SWR's model of collapsing simultaneous requests, not rate-limiting).
+  - Else if the last completed fetch for that key finished within `dedupingInterval`, still start a genuinely new fetch (dedup only collapses _concurrent_ calls, not sequential ones after completion — matches SWR's model of collapsing simultaneous requests, not rate-limiting).
   - Else start a new fetch, register it as in-flight, and clear the in-flight entry on completion (success or failure) via `whenComplete`.
 
 **Acceptance criteria**:
-- Unit tests: two calls issued synchronously (before either resolves) for the same key result in exactly one fetcher invocation and both callers receive the same resolved value; two calls issued after the first has resolved each invoke the fetcher; two calls for *different* keys never collapse.
+
+- Unit tests: two calls issued synchronously (before either resolves) for the same key result in exactly one fetcher invocation and both callers receive the same resolved value; two calls issued after the first has resolved each invoke the fetcher; two calls for _different_ keys never collapse.
 
 ## Phase 4 — Retry Policy
 
@@ -111,6 +114,7 @@ Phase 13+: Post-MVP features (below)
 - `Future<T> executeWithRetry<T>(Future<T> Function() fetcher, SwrRetryPolicy policy, {void Function(Object error, int attempt)? onAttemptFailed})`: loops, catching failures, awaiting `backoff(attempt)` between attempts, rethrowing the last error once `maxAttempts` is exhausted or `shouldRetry` returns `false`.
 
 **Acceptance criteria**:
+
 - Unit tests (using `FakeAsync`/`fake_async` package or injected clock to avoid real delays): fetcher failing N times then succeeding resolves successfully with exactly N+1 invocations; fetcher failing beyond `maxAttempts` rethrows the final error with exactly `maxAttempts` invocations; `shouldRetry` returning `false` stops immediately regardless of `maxAttempts`.
 
 ## Phase 5 — SwrController (per-key state machine)
@@ -129,6 +133,7 @@ This is the module where Phases 1–4 compose into the actual stale-while-revali
 - `bool isStale(Duration freshnessWindow)` — computed from `currentEntry.fetchedAt`.
 
 **Acceptance criteria**:
+
 - Unit tests (pure Dart, fake fetcher functions, no widgets): initial revalidate with no prior entry produces `isLoading`-equivalent state (no data, isValidating true) then resolves to populated data; revalidate with existing data keeps that data visible with `isValidating: true` throughout, then updates; failed revalidate preserves prior `data`, sets `error`; concurrent `revalidate()` calls for the same controller dedup through `DedupManager` correctly.
 
 ## Phase 6 — Configuration and Provider
@@ -136,18 +141,19 @@ This is the module where Phases 1–4 compose into the actual stale-while-revali
 **Files**: `src/config/swr_config.dart`, `src/config/swr_provider.dart`
 
 - `SwrConfig`: immutable data class — `Future<T> Function()? fetcher` (generic per-call, so stored as a nullable resolver typedef, not a concrete `Future<T> Function()` at the config level — see note below), `Duration dedupingInterval`, `Duration? refreshInterval`, `SwrRetryPolicy retry`, `void Function(Object error, Object key)? onError`, `void Function(Object? data, Object key)? onSuccess`, `SwrCache? cache`.
-  - *Design note*: since `SwrConfig` is not generic but individual `useSwr<T>` calls are, the "default fetcher" concept at the config level is necessarily a keyed resolver (`Future<dynamic> Function(Object key)?`) that the hook casts/uses per its own `T`, rather than a literal `Future<T> Function()`. Document this clearly in doc comments so it's not mistaken for a type-safety hole — it's an intentional boundary between the generic hook and the non-generic global config, exactly the same boundary SWR's `fetcher` option in `<SWRConfig>` has in a dynamically-typed language, made explicit here.
+  - _Design note_: since `SwrConfig` is not generic but individual `useSwr<T>` calls are, the "default fetcher" concept at the config level is necessarily a keyed resolver (`Future<dynamic> Function(Object key)?`) that the hook casts/uses per its own `T`, rather than a literal `Future<T> Function()`. Document this clearly in doc comments so it's not mistaken for a type-safety hole — it's an intentional boundary between the generic hook and the non-generic global config, exactly the same boundary SWR's `fetcher` option in `<SWRConfig>` has in a dynamically-typed language, made explicit here.
 - `SwrProvider extends InheritedWidget`: holds a resolved `SwrConfig` that **merges** with the nearest ancestor `SwrProvider`'s config field-by-field (non-null fields on the child override the parent; unset fields fall through) — implements the "nested providers merge" rule from PRODUCT_DETAILS.md §14.
 - Static `SwrProvider.of(BuildContext context)` returning the merged `SwrConfig`, falling back to a package-level default `SwrConfig` (in-memory cache, no default fetcher, standard retry policy) when no provider is present in the tree — this is what makes `useSwr` work with zero setup (per the Open Question in §21, defaulting to "works with zero setup," revisit if that decision changes).
 
 **Acceptance criteria**:
+
 - Widget tests: a `useSwr` call inside a nested `SwrProvider` observes the merged config (child's explicit `retry` overrides parent's, but child's unset `dedupingInterval` inherits the parent's); no `SwrProvider` in the tree still resolves to sane defaults, not a null-check crash.
 
 ## Phase 7 — Hook Layer: `useSwr` and `SwrResponse`
 
 **Files**: `src/hooks/swr_response.dart`, `src/hooks/use_swr.dart`
 
-- `SwrResponse<T>`: immutable class with `data`, `error`, `isLoading`, `isValidating`, `previousData` (nullable, wired but always `null` until Phase 14's `keepPreviousData`), and `when`/`maybeWhen`/`map` methods implemented as straightforward conditionals over the four core fields (no need for a sealed-class hierarchy — a single concrete class computing these fields is simpler and matches the "not more abstraction than needed" instruction, since there's no meaningfully different *shape* of data per state the way a sealed class would buy you, just different field values).
+- `SwrResponse<T>`: immutable class with `data`, `error`, `isLoading`, `isValidating`, and `when`/`maybeWhen`/`map` methods implemented as straightforward conditionals over the core fields (no need for a sealed-class hierarchy — a single concrete class computing these fields is simpler and matches the "not more abstraction than needed" instruction, since there's no meaningfully different _shape_ of data per state the way a sealed class would buy you, just different field values).
 - `useSwr<T>(Object? key, {Future<T> Function()? fetcher, SwrOptions<T>? options})`:
   1. Resolve merged config via `SwrProvider.of(context)` (needs `useContext()` from `flutter_hooks`).
   2. If `key == null`, return a "never fetched, no error, not loading" `SwrResponse` immediately and skip all controller/subscription setup — this is the conditional-fetching short-circuit (Phase 10 covers the "key throws" variant).
@@ -157,6 +163,7 @@ This is the module where Phases 1–4 compose into the actual stale-while-revali
   6. Build and return the `SwrResponse<T>` from the current cache entry, and the bound `SwrMutate<T>` (Phase 8) as the second record element: `(response, mutate)`.
 
 **Acceptance criteria**:
+
 - Widget tests: first mount with a fresh key shows `isLoading: true` then resolves to `data`; two widgets mounting the same key simultaneously trigger exactly one fetcher call (dedup verified at the hook level, not just the unit level); changing the `key` passed to `useSwr` between rebuilds correctly unsubscribes the old key and subscribes/fetches the new one; disposing the widget unsubscribes (verified via no lingering listeners on the cache).
 
 ## Phase 8 — Mutation: Bound and Global
@@ -164,17 +171,20 @@ This is the module where Phases 1–4 compose into the actual stale-while-revali
 **Files**: `src/mutation/mutate.dart`, `src/mutation/global_mutate.dart`
 
 - `SwrMutate<T>` (bound, returned from `useSwr`): implements the record-callable shape from PRODUCT_DETAILS.md §7:
+
   ```dart
   Future<void> call([T? data, T Function(T?)? updater, {List<Object> invalidate = const []}]);
   ```
-  (Dart doesn't allow optional-positional + named mixed exactly like this in one signature ergonomically — finalize as either two named parameters `data`/`updater` with no positional data, or a small sealed `MutationInput<T>` argument; resolve during implementation, but the three call shapes from §7 (`mutate(newUser)`, `mutate(updaterFn)`, `mutate(invalidate: [...])`) must all type-check cleanly.)
-  - Own-key path: if `data`/`updater` provided, write directly to the cache via the controller (bypassing dedup — a direct write is not a fetch) and notify subscribers, then trigger `controller.revalidate()` unless the call opts out.
+
+  (Dart doesn't allow optional-positional + named mixed exactly like this in one signature ergonomically — finalize as either two named parameters `data`/`updater` with no positional data, or a small sealed `MutationInput<T>` argument; resolve during implementation, but the three call shapes from §7 (`mutate(newUser)`, `mutate(updaterFn)`, `mutate(invalidate: [...])`) must all type-check cleanly.)- Own-key path: if `data`/`updater` provided, write directly to the cache via the controller (bypassing dedup — a direct write is not a fetch) and notify subscribers, then trigger `controller.revalidate()` unless the call opts out.
   - No-data path (`mutate()`): just calls `controller.revalidate()`.
   - `invalidate: [...]` path: for each key in the list, look up (or lazily create) that key's controller from the **shared cache/registry** (see design note below) and call `.revalidate()` on it if it has active subscribers; never write data for those keys.
-- **Design note — controller registry**: `SwrController` instances must live in a registry keyed by normalized key, scoped to the `SwrCache` instance (so `SwrProvider`-scoped caches get independent registries). This registry is what both `useSwr` (Phase 7, to find/create its own controller) and `mutate`'s cascade-invalidation path (to reach *other* keys' controllers) use. Implement this registry as part of Phase 5's `SwrController` module (a `SwrControllerRegistry` alongside it) rather than bolting it on in Phase 8 — flag this dependency now so Phase 5 isn't revisited later.
-- `global_mutate.dart`: top-level `Future<void> mutate<T>(Object key, {T? data, bool revalidate = true})` operating against the **default/global** `SwrCache` + registry (the one `SwrProvider.of` falls back to when no provider is present) — documented as not reaching into a custom-provider-scoped cache, matching SWR's per-provider `useSWRConfig().mutate` scoping.
+
+- **Design note — controller registry**: `SwrController` instances must live in a registry keyed by normalized key, scoped to the `SwrCache` instance (so `SwrProvider`-scoped caches get independent registries). This registry is what both `useSwr` (Phase 7, to find/create its own controller) and `mutate`'s cascade-invalidation path (to reach _other_ keys' controllers) use. Implement this registry as part of Phase 5's `SwrController` module (a `SwrControllerRegistry` alongside it) rather than bolting it on in Phase 8 — flag this dependency now so Phase 5 isn't revisited later.
+- `global_mutate.dart`: top-level `Future<void> mutate<T>(Object key, {T? data, bool revalidate = true})` reaching every `SwrCache` known to have registered a controller for `key` — the **default/global** `SwrCache` (the one `SwrProvider.of` falls back to when no provider is present) plus any `SwrProvider`-scoped cache that has already fetched that key. This is a deliberate divergence from SWR's per-provider `useSWRConfig().mutate` scoping (which only reaches one scope at a time), chosen so a single call can invalidate a key across independently-scoped subtrees.
 
 **Acceptance criteria**:
+
 - Unit/widget tests: `mutate(newData)` updates the subscribed widget synchronously before the subsequent revalidation resolves; `mutate()` with no args triggers exactly one revalidation and no cache write; `mutate(invalidate: [otherKey])` triggers a revalidation on `otherKey`'s controller (verified via a second mounted `useSwr(otherKey)` widget updating) and does **not** alter `otherKey`'s `data` field before that revalidation completes; invalidating a key with zero mounted subscribers is a safe no-op (no crash, optionally lazily marks it stale for next mount — decide during implementation and document the choice).
 
 ## Phase 9 — App-Lifecycle Revalidation
@@ -187,6 +197,7 @@ This is the module where Phases 1–4 compose into the actual stale-while-revali
 - On `AppLifecycleState.paused`, pause any active polling timers — this observer is shared with Phase 10's polling work rather than each creating its own, so implement the pause/resume hook here even though nothing pauses yet until Phase 10 lands.
 
 **Acceptance criteria**:
+
 - Widget tests: simulating `AppLifecycleState.resumed` via `TestWidgetsFlutterBinding` triggers revalidation for all mounted keys exactly once each; a second resume within the throttle window is a no-op; keys with no mounted subscriber are not revalidated (avoids waking up controllers nobody is watching).
 
 ## Phase 10 — Polling (`refreshInterval`)
@@ -205,6 +216,7 @@ This is the module where Phases 1–4 compose into the actual stale-while-revali
 - Ensure a transition from `null` → non-null key (e.g., once a dependency resolves) correctly starts fetching on the next rebuild, and non-null → `null` correctly unsubscribes without deleting the cache entry (so it's still there if the key becomes non-null again later).
 
 **Acceptance criteria**:
+
 - Widget tests: `useSwr(null)` never invokes any fetcher and returns an immediately-idle response; a widget rebuilding with `key` flipping from `null` to a real value starts fetching on that rebuild; flipping back to `null` unsubscribes but does not evict the cache entry.
 
 ## Phase 12 — Example App and Integration Pass
@@ -221,22 +233,6 @@ This is the module where Phases 1–4 compose into the actual stale-while-revali
 
 ## Post-MVP Phases (build after Phase 12, same rigor)
 
-### Phase 13 — Optimistic Updates + Rollback Convenience
-
-**Files**: extends `src/mutation/mutate.dart`
-
-Add an `optimisticData`/`rollbackOnError`-style convenience wrapper around the manual pattern already possible via plain `mutate()` calls (PRODUCT_DETAILS.md §8's manual example already works without this; this phase is sugar, not new capability). Resolve the exact parameter shape per the Open Question in PRODUCT_DETAILS.md §21 before implementing.
-
-**Acceptance criteria**: a mutation using the convenience wrapper produces identical observable behavior (timing of visible states, rollback value) to the hand-written manual version already tested in Phase 8.
-
-### Phase 14 — `useSwrMutation`
-
-**Files**: `src/hooks/use_swr_mutation.dart`
-
-Imperative-trigger hook returning `(SwrMutationState<T>, Future<T> Function(Arg) trigger)`. `SwrMutationState<T>` mirrors `SwrResponse<T>`'s shape minus `isValidating`/`previousData`, plus `isMutating`. Does not auto-run on mount. Reuses `RetryPolicy` and the mutation write path from Phase 8 (a manual trigger is conceptually "call the fetcher, then optionally write its result to a target key," so it should call into the same `SwrController` write path rather than duplicating it).
-
-**Acceptance criteria**: `trigger()` not called on mount; concurrent `trigger()` calls before the first resolves are handled per a documented policy (last-write-wins vs. reject-while-pending — decide and test whichever is chosen).
-
 ### Phase 15 — Reconnect Adapter (separate package or optional import)
 
 **Files**: new package `flutter_swr_connectivity` (or `lib/src/lifecycle/connectivity_adapter.dart` behind a documented optional dependency — finalize per the Open Question in §21) depending on `connectivity_plus`.
@@ -245,21 +241,13 @@ Listens for offline→online transitions and calls the same revalidation path us
 
 **Acceptance criteria**: revalidation fires only on an offline→online transition, never on online→offline or repeated online events; core package has zero new dependencies from this phase (fully isolated in the adapter).
 
-### Phase 16 — `keepPreviousData` / `previousData`
-
-**Files**: extends `src/hooks/use_swr.dart`, `src/hooks/swr_response.dart`
-
-When the key changes and `keepPreviousData` is enabled (per-call option), retain the outgoing key's last `data` in the new `SwrResponse.previousData` field until the new key's first fetch resolves.
-
-**Acceptance criteria**: widget test changing `useSwr`'s key mid-lifecycle shows `previousData` populated with the old key's value and `data: null`/`isLoading: true` for the new key until it resolves, then `previousData` clears.
-
-### Phase 17 — Pluggable/Persisted Cache Providers
+### Phase 16 — Pluggable/Persisted Cache Providers
 
 **Files**: documentation + at least one reference non-default `SwrCache` implementation (in `/example` or a docs snippet, not shipped as a first-party persisted provider per PRODUCT_DETAILS.md §3's explicit non-goal).
 
 **Acceptance criteria**: the `SwrCache` interface from Phase 1 requires zero changes to support a custom implementation — this phase should be pure validation that the interface designed in Phase 1 was sufficient, not new production code.
 
-### Phase 18 — `useSwrInfinite`
+### Phase 17 — `useSwrInfinite`
 
 **Files**: `src/hooks/use_swr_infinite.dart`
 
@@ -279,14 +267,12 @@ Lowest priority per PRODUCT_DETAILS.md §13/§16. Implements `getKey(pageIndex, 
 
 ## 4. Milestones
 
-| Milestone | Phases | Definition of Done |
-| --- | --- | --- |
-| M1 — Core engine | 1–5 | `SwrController` correctly implements stale-while-revalidate, dedup, and retry in pure Dart, fully unit-tested, with zero Flutter/widget dependency. |
-| M2 — MVP hook surface | 6–11 | `useSwr` + bound/global `mutate` + app-resume revalidation + polling + conditional fetching all work in a real widget tree; this is the first point where the package is genuinely usable. |
-| M3 — MVP ships | 12 | Example app demonstrates every MVP pattern from PRODUCT_DETAILS.md §8; manual verification pass completed; README updated from its current TODO-template state to real usage docs (§20 of PRODUCT_DETAILS.md). |
-| M4 — Post-MVP wave 1 | 13–14 | Optimistic updates, `useSwrMutation`. |
-| M5 — Post-MVP wave 2 | 15–17 | Reconnect adapter, `keepPreviousData`, cache-provider validation. |
-| M6 — Post-MVP wave 3 | 18 | `useSwrInfinite`. |
+| Milestone             | Phases | Definition of Done                                                                                                                                                                                             |
+| --------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1 — Core engine      | 1–5    | `SwrController` correctly implements stale-while-revalidate, dedup, and retry in pure Dart, fully unit-tested, with zero Flutter/widget dependency.                                                            |
+| M2 — MVP hook surface | 6–11   | `useSwr` + bound/global `mutate` + app-resume revalidation + polling + conditional fetching all work in a real widget tree; this is the first point where the package is genuinely usable.                     |
+| M3 — MVP ships        | 12     | Example app demonstrates every MVP pattern from PRODUCT_DETAILS.md §8; manual verification pass completed; README updated from its current TODO-template state to real usage docs (§20 of PRODUCT_DETAILS.md). |
+| M4 — Post-MVP phase   | 15–17  | Reconnect adapter, pluggable/persisted cache-provider validation, and `useSwrInfinite` all land — the full Post-MVP surface from PRODUCT_DETAILS.md §16 is complete.                                          |
 
 ## 5. Risks / Watch Items
 
