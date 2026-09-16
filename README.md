@@ -21,11 +21,12 @@ gives you the stale-while-revalidate strategy ([RFC 5861](https://www.rfc-editor
 — show cached data immediately, then quietly refetch in the background — plus deduplication and
 mutation, without asking you to restructure how the rest of your app manages state.
 
-**What it isn't:** a general state-management framework (it doesn't replace Bloc/Riverpod/Provider
+**What it isn't:**
 
-for app state), an HTTP client (the fetcher is a plain `Future<T> Function()` you supply), or a
-middleware system — if you need cross-cutting behavior like logging, wrap the fetcher you already
-pass in.
+- A general state-management framework — it doesn't replace Bloc/Riverpod/Provider for app state.
+- An HTTP client — the fetcher is a plain `Future<T> Function()` you supply.
+- A middleware system — if you need cross-cutting behavior like logging, wrap the fetcher you
+  already pass in.
 
 ## Get started
 
@@ -34,9 +35,8 @@ git for now):
 
 ```yaml
 dependencies:
-  flutter_hooks: ^0.21.2
-  flutter_swr:
-    path: ../flutter_swr # or: git: { url: ..., ref: main }
+  flutter_hooks: latest
+  flutter_swr: latest
 ```
 
 The smallest possible usage — a `HookWidget`, a key, and a fetcher:
