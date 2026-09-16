@@ -475,7 +475,7 @@ Middleware is not on either list — it is out of scope for this package entirel
 | `isLoading` | `SwrResponse.isLoading` | Yes | True only with no data yet. |
 | `isValidating` | `SwrResponse.isValidating` | Yes | True for any in-flight fetch, with or without data. |
 | Bound `mutate` | `SwrMutate<T>` record element | Yes | Own-key write; other-key invalidation via `invalidate: [...]`. |
-| Global `mutate` (`useSWRConfig`) | Top-level `mutate<T>(key, {data, revalidate})` function | Yes (minimal) | For mutating/invalidating outside a hook's scope. |
+| Global `mutate` (`useSWRConfig`) | Top-level `mutate<T>(key, {data, revalidate})` function | Yes (minimal) | For mutating/invalidating outside a hook's scope. Reaches every cache the key is registered in — default or `SwrProvider`-scoped — a deliberate divergence from `useSWRConfig().mutate`'s single-scope reach. |
 | `revalidateOnFocus` | Revalidate on `AppLifecycleState.resumed` | Yes | Closest Flutter-native analogue to browser focus. |
 | `revalidateOnReconnect` | Optional `connectivity_plus`-based adapter | No | No core "online" event in Dart/Flutter; kept out of core deps. |
 | `revalidateIfStale` | Revalidate-on-mount-if-stale | Yes | |

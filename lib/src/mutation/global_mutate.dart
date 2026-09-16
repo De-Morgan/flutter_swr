@@ -3,36 +3,46 @@ import '../cache/key_normalizer.dart';
 import '../config/swr_config.dart';
 import '../core/swr_controller.dart';
 
-/// Top-level mutate, operating against the package-level default
-/// [SwrCache] + controller registry — the same one [SwrProvider.of] falls
-/// back to when no [SwrProvider] is present in the tree. This does **not**
-/// reach into a custom-provider-scoped cache: to mutate a key scoped to a
-/// specific [SwrProvider], use the bound [SwrMutate] returned by that key's
-/// `useSwr` call instead (matches SWR's per-provider `useSWRConfig().mutate`
-/// scoping).
+/// Top-level mutate, reaching [key] in every [SwrCache] it's known to be
+/// cached in — the package-level default cache, and any custom cache
+/// supplied to a [SwrProvider], scoped or not. Unlike a single `useSwr`
+/// call's bound `mutate` (which only ever touches the one cache it was
+/// resolved from), this walks every [SwrControllerRegistry] created so far
+/// (see [allRegistries]) so a delete or update elsewhere in the app can
+/// invalidate a key across independently-scoped subtrees in one call.
 ///
-/// If [data] is supplied, it's written directly to the cache first
-/// (bypassing dedup). If [revalidate] is true (the default) and a
-/// controller is already registered for [key] — i.e. some `useSwr` has
-/// fetched it before, so it has a remembered fetcher — that controller is
-/// revalidated. A key with no registered controller is a safe no-op for
-/// the revalidation step: there's no fetcher to run it with yet.
+/// The default cache is always addressed, so it can be pre-seeded with
+/// [data] even before any `useSwr` has fetched [key] there. Every other,
+/// provider-scoped cache is only touched if it already has a controller
+/// registered for [key] — i.e. some `useSwr` under that provider has
+/// fetched it before — so an unrelated scope that happens to reuse the same
+/// key string for different data is left untouched.
+///
+/// If [data] is supplied, it's written directly to each addressed cache
+/// first (bypassing dedup). If [revalidate] is true (the default), every
+/// controller found for [key] is revalidated using its remembered fetcher.
+/// A key with no registered controller anywhere is a safe no-op for the
+/// revalidation step: there's no fetcher to run it with yet.
 Future<void> mutate<T>(Object key, {T? data, bool revalidate = true}) async {
-  final cache = SwrConfig.defaults.cache!;
-  final registry = registryFor(cache);
   final normalizedKey = normalizeKey(key);
+  final defaultRegistry = registryFor(SwrConfig.defaults.cache!);
 
-  if (data != null) {
-    cache.set<T>(
-      normalizedKey,
-      CacheEntry<T>(data: data, fetchedAt: DateTime.now()),
-    );
-  }
-
-  if (revalidate) {
+  final revalidations = <Future<void>>[];
+  for (final registry in allRegistries()) {
     final controller = registry[normalizedKey];
-    if (controller != null) {
-      await controller.revalidate();
+    final isDefault = identical(registry, defaultRegistry);
+    if (controller == null && !isDefault) continue;
+
+    if (data != null) {
+      registry.cache.set<T>(
+        normalizedKey,
+        CacheEntry<T>(data: data, fetchedAt: DateTime.now()),
+      );
+    }
+    if (revalidate && controller != null) {
+      revalidations.add(controller.revalidate());
     }
   }
+
+  await Future.wait(revalidations);
 }

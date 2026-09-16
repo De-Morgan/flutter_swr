@@ -154,3 +154,10 @@ SwrControllerRegistry registryFor(SwrCache cache) {
     () => SwrControllerRegistry(cache),
   );
 }
+
+/// Every [SwrControllerRegistry] created so far — one per distinct
+/// [SwrCache] instance that's been resolved by some `useSwr` call (the
+/// package-level default cache, plus any custom cache supplied to a
+/// [SwrProvider][]). Used by the top-level `mutate()` to reach a key
+/// wherever it's cached, not just in the default cache.
+Iterable<SwrControllerRegistry> allRegistries() => _registriesByCache.values;

@@ -96,5 +96,112 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'mutate(key, data: ...) reaches SwrProvider-scoped caches too, not just the default',
+      (tester) async {
+        final cacheA = InMemoryCache();
+        final cacheB = InMemoryCache();
+        final completersA = <Completer<String>>[];
+        final completersB = <Completer<String>>[];
+
+        Future<String> fetcherA() {
+          final completer = Completer<String>();
+          completersA.add(completer);
+          return completer.future;
+        }
+
+        Future<String> fetcherB() {
+          final completer = Completer<String>();
+          completersB.add(completer);
+          return completer.future;
+        }
+
+        late SwrResponse<String> responseA;
+        late SwrResponse<String> responseB;
+
+        await tester.pumpWidget(
+          Column(
+            textDirection: TextDirection.ltr,
+            children: [
+              SwrProvider(
+                config: SwrConfig(cache: cacheA),
+                child: HookBuilder(
+                  builder: (context) {
+                    final (r, _) = useSwr<String>(
+                      'shared-key',
+                      fetcher: fetcherA,
+                    );
+                    responseA = r;
+                    return const SizedBox();
+                  },
+                ),
+              ),
+              SwrProvider(
+                config: SwrConfig(cache: cacheB),
+                child: HookBuilder(
+                  builder: (context) {
+                    final (r, _) = useSwr<String>(
+                      'shared-key',
+                      fetcher: fetcherB,
+                    );
+                    responseB = r;
+                    return const SizedBox();
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+
+        completersA[0].complete('a-fetched-1');
+        completersB[0].complete('b-fetched-1');
+        await tester.pumpAndSettle();
+        expect(responseA.data, 'a-fetched-1');
+        expect(responseB.data, 'b-fetched-1');
+
+        unawaited(mutate<String>('shared-key', data: 'written'));
+        await tester.pump();
+        await tester.pump();
+
+        expect(responseA.data, 'written');
+        expect(responseB.data, 'written');
+        expect(completersA, hasLength(2));
+        expect(completersB, hasLength(2));
+
+        completersA[1].complete('a-fetched-2');
+        completersB[1].complete('b-fetched-2');
+        await tester.pumpAndSettle();
+        expect(responseA.data, 'a-fetched-2');
+        expect(responseB.data, 'b-fetched-2');
+      },
+    );
+
+    testWidgets(
+      'mutate leaves a scoped cache untouched if it has never fetched the key',
+      (tester) async {
+        final untouchedCache = InMemoryCache();
+
+        await tester.pumpWidget(
+          SwrProvider(
+            config: SwrConfig(cache: untouchedCache),
+            child: HookBuilder(
+              builder: (context) {
+                useSwr<String>(
+                  'a-different-key',
+                  fetcher: () async => 'irrelevant',
+                );
+                return const SizedBox();
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await mutate<String>('collision-key', data: 'should-not-appear');
+
+        expect(untouchedCache.get<String>('collision-key'), isNull);
+      },
+    );
   });
 }
