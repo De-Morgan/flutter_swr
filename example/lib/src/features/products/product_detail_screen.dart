@@ -59,6 +59,15 @@ class ProductDetailScreen extends HookWidget {
 
       try {
         await productsRepository.deleteProduct(productId);
+        final list = productsListResponse.data;
+        if (list != null) {
+          await mutate<List<Product>>(
+            '/products',
+            data: list.where((p) => p.id != productId).toList(),
+            revalidate: false,
+          );
+        }
+        if (context.mounted) Navigator.of(context).pop();
       } catch (error) {
         if (context.mounted) {
           ScaffoldMessenger.of(
@@ -67,23 +76,16 @@ class ProductDetailScreen extends HookWidget {
         }
         return;
       }
-
-      final list = productsListResponse.data;
-      if (list != null) {
-        await mutate<List<Product>>(
-          '/products',
-          data: list.where((p) => p.id != productId).toList(),
-          revalidate: false,
-        );
-      }
-      if (context.mounted) Navigator.of(context).pop();
     }
 
     return Scaffold(
       appBar: AppBar(
         title: Text(effective?.title ?? 'Product'),
         actions: [
-          IconButton(onPressed: deleteProduct, icon: const Icon(Icons.delete_outline)),
+          IconButton(
+            onPressed: deleteProduct,
+            icon: const Icon(Icons.delete_outline),
+          ),
         ],
       ),
       body: Column(
@@ -113,7 +115,10 @@ class ProductDetailScreen extends HookWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text(product.title, style: Theme.of(context).textTheme.titleLarge),
+                  Text(
+                    product.title,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     '\$${product.price.toStringAsFixed(2)}',
