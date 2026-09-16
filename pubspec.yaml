@@ -1,7 +1,7 @@
 name: flutter_swr
 description: "Flutter Hooks for Data Fetching"
 version: 0.1.0
-homepage:
+homepage: https://github.com/De-Morgan/flutter_swr
 
 environment:
   sdk: ^3.11.0
