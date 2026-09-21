@@ -59,6 +59,78 @@ void main() {
         );
         expect(result, 'error:boom');
       });
+
+      test('skipError: true prefers stale data over a background error', () {
+        const response = SwrResponse<String>(
+          data: 'stale',
+          error: 'boom',
+          isLoading: false,
+          isValidating: false,
+        );
+        final result = response.when(
+          data: (d) => 'data:$d',
+          error: (e, stackTrace) => 'error:$e',
+          loading: () => 'loading',
+          skipError: true,
+        );
+        expect(result, 'data:stale');
+      });
+
+      test(
+        'skipError: true still calls error when there is no data at all',
+        () {
+          const response = SwrResponse<String>(
+            error: 'boom',
+            isLoading: false,
+            isValidating: false,
+          );
+          final result = response.when(
+            data: (d) => 'data:$d',
+            error: (e, stackTrace) => 'error:$e',
+            loading: () => 'loading',
+            skipError: true,
+          );
+          expect(result, 'error:boom');
+        },
+      );
+
+      test(
+        'skipLoadingOnRefresh: false shows loading while revalidating '
+        'existing data',
+        () {
+          const response = SwrResponse<String>(
+            data: 'stale',
+            isLoading: false,
+            isValidating: true,
+          );
+          final result = response.when(
+            data: (d) => 'data:$d',
+            error: (e, stackTrace) => 'error:$e',
+            loading: () => 'loading',
+            skipLoadingOnRefresh: false,
+          );
+          expect(result, 'loading');
+        },
+      );
+
+      test(
+        'skipLoadingOnReload: true shows the prior error while retrying, '
+        'instead of loading',
+        () {
+          const response = SwrResponse<String>(
+            error: 'boom',
+            isLoading: false,
+            isValidating: true,
+          );
+          final result = response.when(
+            data: (d) => 'data:$d',
+            error: (e, stackTrace) => 'error:$e',
+            loading: () => 'loading',
+            skipLoadingOnReload: true,
+          );
+          expect(result, 'error:boom');
+        },
+      );
     });
 
     group('map', () {

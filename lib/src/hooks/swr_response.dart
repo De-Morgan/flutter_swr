@@ -41,18 +41,43 @@ class SwrResponse<T> {
   /// split any more cleanly than an in-flight fetch does — there's still
   /// nothing to hand [data]'s callback — so it's folded into the [loading]
   /// branch rather than force-casting `null` to a non-nullable `T`.
+  ///
+  /// By default, an [error] alongside stale [data] (a failed background
+  /// revalidation) still routes to [error] — matching SWR's error state,
+  /// but not its stale-while-revalidate *rendering* contract. Pass
+  /// [skipError] `true` to route that case to [data] instead, so a failed
+  /// background refresh doesn't hide already-cached data.
+  ///
+  /// [skipLoadingOnRefresh] (default `true`) and [skipLoadingOnReload]
+  /// (default `false`) control whether [loading] is called while
+  /// currently validating and there's already [data] (refreshing) or
+  /// already [error] with no [data] (reloading after a hard failure),
+  /// respectively — mirroring Riverpod's `AsyncValue.when` parameters of
+  /// the same names.
   R when<R>({
     required R Function(T data) data,
     required R Function(Object error, StackTrace stackTrace) error,
     required R Function() loading,
+    bool skipLoadingOnReload = false,
+    bool skipLoadingOnRefresh = true,
+    bool skipError = false,
   }) {
-    final currentError = this.error;
     final currentData = this.data;
-    if (currentError != null) {
+    final currentError = this.error;
+    final hasValue = currentData != null;
+    final hasError = currentError != null;
+
+    if (!hasValue && !hasError) return loading();
+
+    if (isValidating && hasValue && !skipLoadingOnRefresh) return loading();
+    if (isValidating && hasError && !hasValue && !skipLoadingOnReload) {
+      return loading();
+    }
+
+    if (hasError && (!hasValue || !skipError)) {
       return error(currentError, stackTrace ?? StackTrace.empty);
     }
-    if (currentData != null) return data(currentData);
-    return loading();
+    return data(currentData as T);
   }
 
   /// Like [when], but any state without a matching callback falls back to
@@ -61,31 +86,42 @@ class SwrResponse<T> {
     R Function(T data)? data,
     R Function(Object error, StackTrace stackTrace)? error,
     R Function()? loading,
+    bool skipLoadingOnReload = false,
+    bool skipLoadingOnRefresh = true,
+    bool skipError = false,
     required R Function() orElse,
   }) {
-    if (isLoading) return loading?.call() ?? orElse();
-    final currentError = this.error;
-    if (currentError != null) {
-      return error?.call(currentError, stackTrace ?? StackTrace.empty) ??
-          orElse();
-    }
-    final currentData = this.data;
-    if (currentData != null) return data?.call(currentData) ?? orElse();
-    return orElse();
+    return when(
+      data: data ?? (_) => orElse(),
+      error: error ?? (_, _) => orElse(),
+      loading: loading ?? orElse,
+      skipLoadingOnReload: skipLoadingOnReload,
+      skipLoadingOnRefresh: skipLoadingOnRefresh,
+      skipError: skipError,
+    );
   }
 
   /// Like [when], but each callback receives the whole [SwrResponse] —
   /// e.g. to inspect [isValidating] alongside [data] — instead of just
   /// the raw value. See [when] for why the idle `useSwr(null)` response
-  /// lands in [loading] rather than [data].
+  /// lands in [loading] rather than [data], and for [skipError]/
+  /// [skipLoadingOnReload]/[skipLoadingOnRefresh].
   R map<R>({
     required R Function(SwrResponse<T> response) data,
     required R Function(SwrResponse<T> response) error,
     required R Function(SwrResponse<T> response) loading,
+    bool skipLoadingOnReload = false,
+    bool skipLoadingOnRefresh = true,
+    bool skipError = false,
   }) {
-    if (this.error != null) return error(this);
-    if (this.data != null) return data(this);
-    return loading(this);
+    return when(
+      data: (_) => data(this),
+      error: (_, _) => error(this),
+      loading: () => loading(this),
+      skipLoadingOnReload: skipLoadingOnReload,
+      skipLoadingOnRefresh: skipLoadingOnRefresh,
+      skipError: skipError,
+    );
   }
 
   /// Like [map], but any state without a matching callback falls back to
@@ -94,10 +130,18 @@ class SwrResponse<T> {
     R Function(SwrResponse<T> response)? data,
     R Function(SwrResponse<T> response)? error,
     R Function(SwrResponse<T> response)? loading,
+    bool skipLoadingOnReload = false,
+    bool skipLoadingOnRefresh = true,
+    bool skipError = false,
     required R Function() orElse,
   }) {
-    if (this.error != null) return error?.call(this) ?? orElse();
-    if (this.data != null) return data?.call(this) ?? orElse();
-    return loading?.call(this) ?? orElse();
+    return map(
+      data: data ?? (_) => orElse(),
+      error: error ?? (_) => orElse(),
+      loading: loading ?? (_) => orElse(),
+      skipLoadingOnReload: skipLoadingOnReload,
+      skipLoadingOnRefresh: skipLoadingOnRefresh,
+      skipError: skipError,
+    );
   }
 }
