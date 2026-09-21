@@ -33,6 +33,10 @@ class SwrController<T> {
   /// `null` until [revalidate] has been called at least once with one.
   Future<T> Function()? _lastFetcher;
 
+  /// Whether [revalidate] has ever been called with a fetcher — i.e.
+  /// whether calling it again with none would succeed instead of throwing.
+  bool get hasFetcher => _lastFetcher != null;
+
   /// Synchronous read of the current cache state for [key].
   CacheEntry<T>? get currentEntry => cache.get<T>(key);
 

@@ -1,10 +1,38 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_swr/flutter_swr.dart';
+import 'package:flutter_swr/src/core/swr_controller.dart';
+import 'package:flutter_swr/src/lifecycle/app_lifecycle_listener.dart'
+    as swr_lifecycle;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AppLifecycleListener', () {
+    test(
+      'resume skips a controller that has never had a fetcher '
+      '(no crash racing useSwr\'s own initial fetch)',
+      () {
+        final cache = InMemoryCache();
+        final registry = SwrControllerRegistry(cache);
+        final controller = registry.controllerFor<String>('k');
+        // Simulate useSwr's watch-subscription effect having run, but not
+        // yet its (separate, later) fetcher-attaching effect — the exact
+        // window a cold-start resume can land in.
+        final subscription = cache.watch<String>('k').listen((_) {});
+        addTearDown(subscription.cancel);
+
+        final listener = swr_lifecycle.AppLifecycleListener(registry);
+        expect(
+          () => listener.didChangeAppLifecycleState(
+            AppLifecycleState.resumed,
+          ),
+          returnsNormally,
+        );
+
+        expect(controller.hasFetcher, isFalse);
+        expect(controller.currentEntry?.error, isNull);
+      },
+    );
     testWidgets('resuming revalidates every mounted key exactly once', (
       tester,
     ) async {
