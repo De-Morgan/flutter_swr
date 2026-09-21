@@ -59,6 +59,11 @@ class AppLifecycleListener extends WidgetsBindingObserver {
     for (final controller in registry.controllers) {
       if (!controller.revalidateOnFocus) continue;
       if (!registry.cache.hasWatchers(controller.key)) continue;
+      // A controller that hasn't had its first fetcher-bearing revalidate
+      // yet is about to get one from useSwr's own mount effect regardless —
+      // skipping it here avoids racing that effect and calling revalidate()
+      // with no fetcher to fall back on.
+      if (!controller.hasFetcher) continue;
 
       final lastRevalidatedAt = _lastResumeRevalidatedAt[controller.key];
       if (lastRevalidatedAt != null &&

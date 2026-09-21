@@ -5,7 +5,12 @@ import 'api/api.dart';
 import 'features/products/product_list_screen.dart';
 
 class StoreApp extends StatelessWidget {
-  const StoreApp({super.key});
+  const StoreApp({super.key, required this.cache});
+
+  /// Persisted [SwrCache] (see [SqfliteSwrCache]) so the product grid/detail
+  /// pages still have data to show, stale-then-revalidated, right after a
+  /// cold start.
+  final SwrCache cache;
 
   @override
   Widget build(BuildContext context) {
@@ -14,6 +19,7 @@ class StoreApp extends StatelessWidget {
         fetcher: storeFetcher.fetch,
         dedupingInterval: const Duration(seconds: 30),
         revalidateOnFocus: true,
+        cache: cache,
       ),
       child: MaterialApp(
         title: 'Fake Store',
