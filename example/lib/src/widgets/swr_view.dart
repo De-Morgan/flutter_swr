@@ -21,11 +21,13 @@ class SwrView<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return response.map(
       data: (r) => builder(context, r.data as T),
-      error: (r) => RetryErrorView(
-        message: r.error.toString(),
-        onRetry: onRetry,
-      ),
+      error: (r) =>
+          RetryErrorView(message: r.error.toString(), onRetry: onRetry),
       loading: (_) => const Center(child: CircularProgressIndicator()),
+      // A failed background revalidation shouldn't hide data already on
+      // screen — only fall through to the full-screen error panel when
+      // there's no data to show at all.
+      skipError: true,
     );
   }
 }
@@ -33,7 +35,11 @@ class SwrView<T> extends StatelessWidget {
 /// A standalone error-with-retry panel, usable outside [SwrView] too (e.g.
 /// for a form submission failure).
 class RetryErrorView extends StatelessWidget {
-  const RetryErrorView({super.key, required this.message, required this.onRetry});
+  const RetryErrorView({
+    super.key,
+    required this.message,
+    required this.onRetry,
+  });
 
   final String message;
   final Future<void> Function() onRetry;

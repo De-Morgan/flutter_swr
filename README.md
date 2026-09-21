@@ -3,40 +3,38 @@
 **Flutter Hooks for data fetching** — a Dart port of [SWR](https://swr.vercel.app), Vercel's React
 data-fetching library, built on top of [`flutter_hooks`](https://pub.dev/packages/flutter_hooks).
 
-`useSwr` gives you a cache-then-revalidate hook for remote data: call it with a key and a fetcher,
-and every widget that asks for the same key gets instant cached data, a background refetch,
-request deduplication, and a simple way to mutate the cache — all without wiring up your own
-cache map or adopting a full state-management framework.
+It revalidates on app resume and on a fixed interval, so widgets stay current on their own with no
+manual refresh logic.
+
+Pass a key and a fetcher to `useSwr`. The hook manages the request, caches the response, and keeps
+data fresh — you get `data`, `error`, and `isLoading` back to drive your UI.
 
 ## Why does this exist?
 
-Flutter doesn't have an equivalent to SWR (or React Query). The idiomatic pattern today is a
-`FutureBuilder` wired to manual `setState`, or reaching for a `Bloc` / Riverpod `FutureProvider` —
-each of which either re-fetches on every rebuild, requires you to hand-roll caching, or requires
-adopting an entire state-management architecture just to get "cache this GET request and share it
-across widgets."
+Flutter has no equivalent to SWR or React Query. The idiomatic pattern today is a `FutureBuilder`
+wired to manual `setState`, or reaching for `Bloc` / Riverpod's `FutureProvider` — each one either
+re-fetches on every rebuild, makes you hand-roll caching, or drags in a whole state-management
+architecture just to share one cached GET request across widgets.
 
-`flutter_swr` fills the specific gap SWR fills in React: a small, focused hook for remote data that
-gives you the stale-while-revalidate strategy ([RFC 5861](https://www.rfc-editor.org/rfc/rfc5861))
-— show cached data immediately, then quietly refetch in the background — plus deduplication and
-mutation, without asking you to restructure how the rest of your app manages state.
+`flutter_swr` is the small, focused piece that's missing: stale-while-revalidate
+([RFC 5861](https://www.rfc-editor.org/rfc/rfc5861)) data fetching — show cached data immediately,
+refetch quietly in the background — plus deduplication and mutation, without asking you to
+restructure how the rest of your app manages state.
 
 **What it isn't:**
 
-- A general state-management framework — it doesn't replace Bloc/Riverpod/Provider for app state.
-- An HTTP client — the fetcher is a plain `Future<T> Function()` you supply.
-- A middleware system — if you need cross-cutting behavior like logging, wrap the fetcher you
-  already pass in.
+- **Not a state-management framework** — it doesn't replace Bloc/Riverpod/Provider for app state.
+- **Not an HTTP client** — the fetcher is just a plain `Future<T> Function()` you write.
+- **Not a middleware system** — need logging or other cross-cutting behavior? Wrap the fetcher.
 
 ## Get started
 
-Add the package to your `pubspec.yaml` (not yet published to pub.dev — depend on it via path or
-git for now):
+Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_hooks: latest
-  flutter_swr: latest
+  flutter_hooks: ^0.21.2
+  flutter_swr: ^0.1.0
 ```
 
 The smallest possible usage — a `HookWidget`, a key, and a fetcher:
@@ -251,6 +249,41 @@ abstract class SwrCache {
 }
 ```
 
+### Persisted caching: SqfliteSwrCache
+
+The default `InMemoryCache` doesn't survive an app restart. The [`example/`](example) app shows
+how to swap in a persisted cache instead, backed by [`sqflite`](https://pub.dev/packages/sqflite),
+so data fetched before the app was closed is available instantly on the next cold start:
+
+![flutter_swr demo](demo/store_app.gif)
+
+```dart
+final cache = await SqfliteSwrCache.open(
+  fromJson: {...swrModel<Product>(Product.fromJson)},
+);
+runApp(StoreApp(cache: cache));
+
+// inside StoreApp:
+SwrProvider(
+  config: SwrConfig(
+    fetcher: storeFetcher.fetch,
+    cache: cache, // swap the default InMemoryCache for the persisted one
+  ),
+  child: MaterialApp(home: const ProductListScreen()),
+);
+```
+
+`swrModel<T>(fromJson)` is a small helper that registers a model's `fromJson` for both `T` and
+`List<T>` in one call — needed because sqflite has no synchronous read API, so cached rows are
+decoded lazily by type the first time they're read. The model itself just needs a `toJson()` and a
+`fromJson()` (see `Product` in `example/lib/src/models/product.dart`).
+
+Copy the full implementation from `example/lib/src/cache/sqflite_swr_cache.dart` to use it in your
+own app — or, for a lighter-weight option with smaller datasets, see
+`example/lib/src/cache/shared_preferences_swr_cache.dart`. Both are example-app-local
+implementations validating the `SwrCache` interface against a real persistence backend, not part
+of the published package's public API.
+
 ### Error handling and retry
 
 Fetcher failures are retried automatically with exponential backoff (5 attempts by default, capped
@@ -285,18 +318,6 @@ flutter run
 | `revalidateOnFocus` (tab refocus)         | `revalidateOnFocus` (app resume)                                   |
 | `revalidateOnReconnect`                   | planned — see Roadmap                                              |
 | `data`/`error`/`isLoading`/`isValidating` | same fields on`SwrResponse<T>`, plus `when`/`map` pattern matching |
-
-## Roadmap
-
-The core hook, caching, dedup, retry, mutation, app-resume revalidation, polling, and conditional
-fetching are all implemented. Not yet shipped:
-
-- Revalidate-on-reconnect (network connectivity adapter)
-- Pluggable/persisted cache providers (interface exists; not yet validated beyond `InMemoryCache`)
-- `useSwrInfinite` for pagination
-- `keepPreviousData`
-- Optimistic updates with automatic rollback
-- `useSwrMutation` (imperative, trigger-based mutations)
 
 ## Contributing
 
