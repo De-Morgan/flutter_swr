@@ -10,6 +10,8 @@ class Rating {
 
   final double rate;
   final int count;
+
+  Map<String, dynamic> toJson() => {'rate': rate, 'count': count};
 }
 
 class Product {
@@ -44,4 +46,14 @@ class Product {
   final String category;
   final String image;
   final Rating rating;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'price': price,
+    'description': description,
+    'category': category,
+    'image': image,
+    'rating': rating.toJson(),
+  };
 }
