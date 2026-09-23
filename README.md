@@ -29,14 +29,6 @@ restructure how the rest of your app manages state.
 
 ## Get started
 
-Add the package to your `pubspec.yaml`:
-
-```yaml
-dependencies:
-  flutter_hooks: ^0.21.2
-  flutter_swr: ^0.1.0
-```
-
 The smallest possible usage — a `HookWidget`, a key, and a fetcher:
 
 ```dart
@@ -278,11 +270,12 @@ SwrProvider(
 decoded lazily by type the first time they're read. The model itself just needs a `toJson()` and a
 `fromJson()` (see `Product` in `example/lib/src/models/product.dart`).
 
-Copy the full implementation from `example/lib/src/cache/sqflite_swr_cache.dart` to use it in your
-own app — or, for a lighter-weight option with smaller datasets, see
-`example/lib/src/cache/shared_preferences_swr_cache.dart`. Both are example-app-local
-implementations validating the `SwrCache` interface against a real persistence backend, not part
-of the published package's public API.
+Copy the full implementation from either of these to use in your own app — both are
+example-app-local, validating the `SwrCache` interface against a real persistence backend, not
+part of the published package's public API:
+
+- [SqfliteSwrCache](example/lib/src/cache/sqflite_swr_cache.dart) — the sqflite-backed cache shown above.
+- [SharedPreferencesSwrCache](example/lib/src/cache/shared_preferences_swr_cache.dart) — a lighter-weight option for smaller datasets.
 
 ### Error handling and retry
 
