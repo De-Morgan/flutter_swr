@@ -4,3 +4,15 @@
 
 # README demo assets, not needed in the published package
 /demo/
+
+# A .pubignore file replaces .gitignore for `dart pub publish` purposes, so
+# the build/IDE artifacts .gitignore keeps out of git must be repeated here.
+build/
+*.iml
+*.ipr
+*.iws
+.idea/
+.dart_tool/
+.flutter-plugins-dependencies
+/coverage/
+**/doc/api/
