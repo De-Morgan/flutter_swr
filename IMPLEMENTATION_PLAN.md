@@ -255,6 +255,14 @@ Lowest priority per PRODUCT_DETAILS.md §13/§16. Implements `getKey(pageIndex, 
 
 **Acceptance criteria**: `getKey` returning `null` stops further page fetches; `setSize(n)` fetches exactly the newly-added pages (not re-fetching already-loaded ones, unless individually stale); parallel mode fetches all current pages concurrently with `previousPageData` unavailable, matching the documented tradeoff.
 
+### Phase 18 — `useSwrMutation`
+
+**Files**: `src/core/mutation_tracker.dart`, `src/core/dedup_manager.dart` (`forget`), `src/core/swr_controller.dart` (tracker wiring, stale-fetch discard, `beginMutation`/`endMutation`), `src/mutation/swr_mutation_options.dart`, `src/mutation/swr_mutation.dart` (internal engine), `src/hooks/swr_mutation_state.dart`, `src/hooks/use_swr_mutation.dart`.
+
+Imperative mutation hook porting React SWR's `useSWRMutation`: nothing runs on mount; `trigger` runs the fetcher once (no retry, no dedup), with optional key-bound `optimisticData`/`populateCache(With)`/`rollbackOnError` and post-mutation revalidation of mounted readers. A per-registry `MutationTracker` makes any read fetch that overlaps a mutation on its key discard its result, so stale pre-mutation data never overwrites the mutation's write. Design: [USESWRMUTATION.md](USESWRMUTATION.md);
+
+**Acceptance criteria**: every test listed in USESWRMUTATION.md §6 exists and passes; existing suites unchanged and green; `core/`/`mutation/` stay Flutter-free; the example's product rename demonstrates optimistic update, rollback and race protection in the running app.
+
 ---
 
 ## 3. Cross-Cutting Testing Strategy
@@ -272,10 +280,11 @@ Lowest priority per PRODUCT_DETAILS.md §13/§16. Implements `getKey(pageIndex, 
 | M1 — Core engine      | 1–5    | `SwrController` correctly implements stale-while-revalidate, dedup, and retry in pure Dart, fully unit-tested, with zero Flutter/widget dependency.                                                            |
 | M2 — MVP hook surface | 6–11   | `useSwr` + bound/global `mutate` + app-resume revalidation + polling + conditional fetching all work in a real widget tree; this is the first point where the package is genuinely usable.                     |
 | M3 — MVP ships        | 12     | Example app demonstrates every MVP pattern from PRODUCT_DETAILS.md §8; manual verification pass completed; README updated from its current TODO-template state to real usage docs (§20 of PRODUCT_DETAILS.md). |
-| M4 — Post-MVP phase   | 15–17  | Reconnect adapter, pluggable/persisted cache-provider validation, and `useSwrInfinite` all land — the full Post-MVP surface from PRODUCT_DETAILS.md §16 is complete.                                          |
+| M4 — Post-MVP phase   | 15–17  | Reconnect adapter, pluggable/persisted cache-provider validation, and`useSwrInfinite` all land — the full Post-MVP surface from PRODUCT_DETAILS.md §16 is complete.                                            |
 
 ## 5. Risks / Watch Items
 
 - **Records-in-return-type ergonomics**: `(SwrResponse<T>, SwrMutate<T>)` requires Dart 3 pattern-matching destructuring at every call site; confirm the SDK constraint in `pubspec.yaml` (`environment.sdk`) is raised accordingly before Phase 7 — the current `sdk: ^3.11.0` already satisfies this, so no action needed, just noting the dependency explicitly.
 - **Controller registry lifecycle**: because Phase 8's cascade-invalidation needs to reach controllers for keys with no currently-mounted `useSwr` widget, decide early (during Phase 5) whether uncontrolled growth of the registry (controllers for keys nobody currently watches) is acceptable or needs eviction — flagged here so it isn't discovered late as a memory-leak surprise.
+- **Race protection for `mutate` (follow-up to Phase 18)**: the `MutationTracker` only covers `useSwrMutation`. The bound `mutate(data: …)` and top-level `mutate(key, data: …)` can still have their direct write overwritten by an older in-flight fetch. Wiring them to `registry.beginMutation`/`endMutation` is a small change each, but it changes existing public behavior, so it's deferred to its own release (USESWRMUTATION.md §4.4).
 - **`SwrConfig`'s non-generic default fetcher**: the type-erasure boundary noted in Phase 6 is easy to implement sloppily (silent `as T` casts). Write an explicit test that a mismatched default-fetcher return type throws a clear, typed error rather than a confusing cast failure.

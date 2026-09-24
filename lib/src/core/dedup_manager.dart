@@ -33,4 +33,11 @@ class DedupManager {
         .ignore();
     return future;
   }
+
+  /// Drops the in-flight entry for [normalizedKey] without cancelling it:
+  /// callers already awaiting that future still get its result, but the
+  /// next [run] for the key starts a fresh fetch. Used after a mutation so
+  /// the post-mutation revalidation doesn't join a pre-mutation fetch whose
+  /// result is going to be discarded.
+  void forget(Object normalizedKey) => _inFlight.remove(normalizedKey);
 }

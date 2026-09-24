@@ -101,12 +101,12 @@ flutter_swr is built on top of [`flutter_hooks`](https://pub.dev/packages/flutte
 ### Optimistic Updates + Rollback
 **Description**: Write a predicted value to the cache immediately on mutation, then reconcile with the real response or roll back on error ([mutation docs — optimisticData/rollbackOnError](https://swr.vercel.app/docs/mutation)).
 **Expected behavior**: UI reflects the optimistic value instantly; on fetcher/mutation failure, the cache reverts to its pre-mutation value and the error surfaces.
-**Priority**: Post-MVP
+**Priority**: Post-MVP — **delivered** through `useSwrMutation`'s `optimisticData`/`rollbackOnError` (see [USESWRMUTATION.md](USESWRMUTATION.md)).
 
 ### `useSwrMutation` (imperative mutation)
 **Description**: A separate hook for mutations that should not run automatically on mount, mirroring [`useSWRMutation`](https://swr.vercel.app/docs/mutation#useswrmutation).
 **Expected behavior**: Returns an idle state plus a `trigger()` function; calling `trigger()` runs the mutation and updates `isMutating`/`data`/`error`.
-**Priority**: Post-MVP
+**Priority**: Post-MVP — **delivered** (0.3.0). Design and rationale: [USESWRMUTATION.md](USESWRMUTATION.md).
 
 ### Conditional / Dependent Fetching
 **Description**: Skip fetching when the key is `null`, or derive a key from another hook's data and skip while that data isn't ready yet ([conditional-fetching docs](https://swr.vercel.app/docs/conditional-fetching)).
@@ -217,11 +217,18 @@ Supporting pieces:
 // Global mutate — for mutating/invalidating from outside any hook's scope
 Future<void> mutate<T>(Object key, {T? data, bool revalidate = true});
 
-// Imperative mutation hook (Post-MVP)
-(SwrMutationState<T>, Future<T> Function(Arg arg)) useSwrMutation<T, Arg>(
-  Object key,
-  Future<T> Function(Arg arg) mutationFn,
-);
+// Imperative mutation hook. Key optional: bound to the cache entry when given,
+// pure async-state tracking when omitted. See USESWRMUTATION.md §2.
+(SwrMutationState<T>, SwrTrigger<T, Arg>) useSwrMutation<T, Arg>(
+  Future<T> Function(Arg arg) fetcher, {
+  Object? key,
+  SwrMutationOptions<T, Arg>? options,
+});
+
+abstract class SwrTrigger<T, Arg> {
+  Future<T?> call([Arg? data]); // trigger() / trigger(arg)
+  void reset();
+}
 
 // Global/app-scoped configuration
 class SwrProvider extends StatelessWidget {
@@ -299,7 +306,24 @@ IconButton(
 );
 ```
 
-### Mutation with optimistic update (Post-MVP)
+### Mutation with optimistic update
+
+With `useSwrMutation` (delivered), optimistic write, rollback and reconciliation are options:
+
+```dart
+final (renameState, rename) = useSwrMutation<User, String>(
+  (newName) => api.updateUser(id, name: newName),
+  key: '/api/user/$id',
+  options: SwrMutationOptions(
+    optimisticData: (current, newName) => current?.copyWith(name: newName),
+    populateCache: true,     // reconcile with server response
+    // rollbackOnError: true is the default
+  ),
+);
+await rename('Ada');
+```
+
+The manual pattern below, using the bound `mutate`, still works:
 
 ```dart
 final (dataAsync, mutate) = useSwr<User>('/api/user/$id');
@@ -385,8 +409,10 @@ final (profileAsync, _) = useSwr<Profile>(
 ## 11. Mutation
 
 - **Own-key write**: `mutate(newData)` or `mutate(updaterFn)` on the bound value writes the cache for that hook's key and notifies all subscribers synchronously.
-- **Optimistic updates** (Post-MVP): write a predicted value before the network call resolves, so the UI updates instantly; reconcile with the real response afterward.
-- **Rollback**: if the underlying mutation throws, the cache is restored to its pre-mutation value (the caller is responsible for capturing/passing the "previous" value, as shown in §8, unless a higher-level `optimisticData`/`rollbackOnError`-style convenience wrapper is added Post-MVP).
+- **Optimistic updates**: write a predicted value before the network call resolves, so the UI updates instantly; reconcile with the real response afterward. Delivered as `useSwrMutation`'s `optimisticData` + `populateCache`/`populateCacheWith`.
+- **Rollback**: if the underlying mutation throws, the cache is restored to its pre-mutation value. `useSwrMutation` does this automatically (`rollbackOnError`, default `true`), skipping the rollback if someone else wrote the key in the meantime; with the bound `mutate`, the caller still captures/passes the "previous" value manually, as shown in §8.
+- **Race protection**: while a `useSwrMutation` on a key is in flight, any read fetch for that key that overlapped it has its result discarded, and the key is revalidated after the mutation — stale pre-mutation data never overwrites what the mutation wrote. The bound and global `mutate` are not (yet) covered by this.
+- **Global callbacks**: `SwrConfig.onSuccess`/`onError` are scoped to reads and are not called for `useSwrMutation`; use its own `onSuccess`/`onError` options.
 - **Revalidation after mutation**: by default, a successful `mutate` triggers a background revalidation to reconcile the cache with the source of truth, mirroring SWR's default `mutate` behavior; this can be disabled per call.
 - **Mutation errors**: surfaced via the returned `Future` from `mutate`/`trigger` (so callers can `try/catch`), and also reflected in `useSwrMutation`'s `error` state for the imperative-mutation hook.
 - **Cascade invalidation**: `mutate(invalidate: [...])` marks other keys stale and triggers their revalidation for any currently-mounted subscriber — it never writes data into a key it doesn't own (see §7 for the rationale).
@@ -455,8 +481,8 @@ No middleware chain module exists in this architecture (per §3/§6).
 
 ### Post-MVP
 Roughly in priority order:
-1. Optimistic updates + rollback convenience API.
-2. `useSwrMutation` (imperative mutation hook).
+1. ~~Optimistic updates + rollback convenience API.~~ Delivered via `useSwrMutation` (0.3.0).
+2. ~~`useSwrMutation` (imperative mutation hook).~~ Delivered (0.3.0).
 3. Polling (`refreshInterval`).
 4. Reconnect-triggered revalidation (`connectivity_plus` adapter package).
 5. `keepPreviousData` / `previousData`.
@@ -482,9 +508,9 @@ Middleware is not on either list — it is out of scope for this package entirel
 | `refreshInterval` (polling) | `Timer.periodic`-based polling option | No | |
 | Request deduplication | In-flight `Future` sharing per key | Yes | |
 | `dedupingInterval` | `SwrOptions.dedupingInterval` | Yes | |
-| `optimisticData` / `rollbackOnError` | Optimistic-update convenience on `mutate` | No | Manual optimistic pattern (§8 example) works without it even pre-MVP-completion of the convenience wrapper. |
+| `optimisticData` / `rollbackOnError` | `SwrMutationOptions.optimisticData` / `rollbackOnError` on `useSwrMutation` | Post-MVP (delivered 0.3.0) | `optimisticData` is function-only and also receives the trigger argument. Not on the bound `mutate`; the manual pattern (§8) still works there. |
 | `populateCache` | Implicit in own-key `mutate` write | Yes | No separate flag needed at MVP scope. |
-| `useSWRMutation` | `useSwrMutation<T, Arg>` | No | |
+| `useSWRMutation` | `useSwrMutation<T, Arg>(fetcher, {key, options})` | Post-MVP (delivered 0.3.0) | Returns `(SwrMutationState<T>, SwrTrigger<T, Arg>)`; `reset` lives on the trigger. Optional `key` means "unbound", not "disabled". `populateCache` is split into a bool + `populateCacheWith`. See USESWRMUTATION.md. |
 | `useSWRInfinite` | `useSwrInfinite<T>` | No | Lowest-priority Post-MVP item. |
 | Conditional fetching (`null` key) | `useSwr(null)` skips the fetch | Yes | |
 | Dependent fetching (key derived from another hook, throws/returns falsy until ready) | Same pattern — key expression returns `null` until the dependency is ready | Yes | |
@@ -535,4 +561,4 @@ At the same time, the API should feel native to a Flutter developer who has neve
 - **Minimum Dart/Flutter SDK**: the record-based `(SwrResponse<T>, SwrMutate<T>)` return type requires Dart 3's records/patterns — confirm the minimum supported SDK version reflects this.
 - **Package structure**: single `flutter_swr` package, or split a platform-agnostic `swr_core` (cache, dedup, retry logic) from a `flutter_swr` package that adds the `flutter_hooks` integration and lifecycle wiring — the latter would ease a future non-Flutter Dart consumer but adds release/versioning overhead now.
 - **Cascade-invalidation ergonomics**: is `mutate(invalidate: [...])` (§7) the final shape, or should there be a separate top-level helper (e.g. `invalidateKeys([...])`) so the "own key" and "other keys" operations aren't both hanging off the same bound function signature?
-- **Optimistic-update convenience API shape**: once implemented (Post-MVP), does it take an `optimisticData`/`rollbackOnError` parameter pair on `mutate` (closer to literal SWR), or stay manual (as shown in §8) with a documented pattern rather than a dedicated parameter?
+- ~~**Optimistic-update convenience API shape**~~ — **Decided:** it lives on `useSwrMutation` as `SwrMutationOptions.optimisticData`/`rollbackOnError`/`populateCache(With)` (closer to literal SWR's `useSWRMutation`); the bound `mutate` stays manual, as shown in §8. See USESWRMUTATION.md §2.3.
