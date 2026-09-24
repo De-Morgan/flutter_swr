@@ -165,6 +165,76 @@ await swr.mutate<List<Product>>(
 );
 ```
 
+### `useSwrMutation`
+
+For writes (POST/PUT/DELETE) that should run only when the user asks, use `useSwrMutation`. It
+doesn't run on mount: it returns its own state plus a `trigger` that runs the request.
+
+```dart
+final (state, trigger) = useSwrMutation<Todo, String>(
+  (title) => api.createTodo(title),
+  options: SwrMutationOptions(
+    // /todos caches List<Todo>, not Todo, so refresh it by key instead.
+    onSuccess: (_, _, _) => mutate<List<Todo>>('/todos'),
+  ),
+);
+
+FilledButton(
+  onPressed: state.isMutating ? null : () => trigger('Buy milk'),
+  child: const Text('Add'),
+);
+```
+
+`state` is a `SwrMutationState<T>` (`data`, `error`, `stackTrace`, `isMutating`). It belongs to this
+hook alone. Two `useSwrMutation`s on the same key don't share it, and `useSwr` readers never see
+it. `trigger` throws on failure by default, so wrap it in `try`/`catch`, or pass
+`throwOnError: false` to get `null` back instead.
+
+**Bound to a key: optimistic update and rollback.** Pass `key:` to act on that cache entry. `T` must
+then be the key's cached type.
+
+```dart
+final (renameState, trigger) = useSwrMutation<User, String>(
+  (name) => api.renameUser(name),
+  key: '/api/user',
+  options: SwrMutationOptions(
+    optimisticData: (current, name) => current?.copyWith(name: name), // shown immediately
+    populateCache: true, // cache the server's response
+    // rollbackOnError: true (default) restores the previous value if the request throws
+  ),
+);
+```
+
+While a bound mutation runs, any `useSwr` fetch for the key that was already in flight has its
+result thrown away, so stale pre-mutation data never overwrites what the mutation wrote. Once the
+mutation settles, successfully or not, the key's mounted `useSwr` readers are revalidated. Pass
+`revalidate: false` to skip that.
+
+| Option                  | Default                                          | Purpose                                                                          |
+| ----------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `optimisticData`        | none                                             | `(current, arg) => next`, written before the request. Returning `null` skips it. |
+| `populateCache`         | `false`, or `true` if `populateCacheWith` is set | Write the result to the cache.                                                   |
+| `populateCacheWith`     | none                                             | `(result, current) => toCache`, for when the response isn't the cached shape.    |
+| `rollbackOnError`       | `true`                                           | Restore the pre-mutation value on failure.                                       |
+| `revalidate`            | `true`                                           | Revalidate the key's mounted readers afterwards. It isn't awaited.               |
+| `throwOnError`          | `true`                                           | Rethrow from `trigger`. When `false`, `trigger` completes with `null`.           |
+| `onSuccess` / `onError` | none                                             | Called for the latest trigger only, with `(data or error, key, arg)`.            |
+
+Options are set once, on the hook. `trigger` takes only the argument. To act on a single call's
+outcome, await it: `final saved = await trigger(arg);`, with `try`/`catch` for errors.
+
+Some more details:
+
+- **No argument:** use `Arg = void` and call `trigger()`. If `Arg` is non-nullable, calling `trigger()`
+  without `data` throws an `ArgumentError`.
+- **Latest trigger wins:** if you trigger again before the first call finishes, only the newest call
+  updates `state` and fires the callbacks. Every call's own `Future` still completes.
+- **`trigger.reset()`** puts `state` back to idle and ignores the result of any call still in flight.
+- **No retry, no dedup:** mutations aren't idempotent, so every `trigger` calls the fetcher exactly
+  once.
+- **Key-only options:** `optimisticData`, `populateCache` and `populateCacheWith` need a `key`. If you
+  set them without one, debug builds throw an `AssertionError` and release builds ignore them.
+
 ### Configuration: `SwrProvider` and `SwrConfig`
 
 Scope defaults to a subtree with `SwrProvider`, so individual `useSwr` calls don't need to repeat
@@ -308,9 +378,23 @@ flutter run
 | `useSWR(key, fetcher)`                    | `useSwr<T>(key, fetcher: fetcher)`                                 |
 | `<SWRConfig value={...}>`                 | `SwrProvider(config: SwrConfig(...))`                              |
 | `mutate` from `useSWRConfig()`            | top-level`mutate<T>(key, ...)`                                     |
+| `useSWRMutation(key, fetcher, options)`   | `useSwrMutation<T, Arg>(fetcher, key:, options:)` — see below      |
 | `revalidateOnFocus` (tab refocus)         | `revalidateOnFocus` (app resume)                                   |
 | `revalidateOnReconnect`                   | planned — see Roadmap                                              |
 | `data`/`error`/`isLoading`/`isValidating` | same fields on`SwrResponse<T>`, plus `when`/`map` pattern matching |
+
+`useSwrMutation` differs from `useSWRMutation` in these ways:
+
+- It returns a `(state, trigger)` record. `reset` is a method on the trigger: `trigger.reset()`.
+- `trigger(arg)` takes no per-call options. Set them on the hook, and await `trigger` to handle one
+  call's result.
+- The fetcher takes only the argument, `(arg) => ...`, not `(key, {arg})`.
+- `key` is optional. Leaving it out means "don't touch the cache", not "disabled".
+- `optimisticData` is always a function, and it also receives the trigger argument.
+- `populateCache` is split into a `bool` field and a `populateCacheWith` function.
+- Callbacks receive `arg`, and `onError` also receives the `StackTrace`.
+- `trigger` resolves without waiting for the follow-up revalidation. A bound `mutate` does wait for
+  its revalidation.
 
 ## Contributing
 
