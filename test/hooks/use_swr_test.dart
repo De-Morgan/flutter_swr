@@ -267,5 +267,120 @@ void main() {
         expect((response.error as StateError).message, contains('String'));
       },
     );
+
+    testWidgets('SwrConfig.onSuccess fires once per fetch with data and key', (
+      tester,
+    ) async {
+      final calls = <(Object?, Object)>[];
+
+      await tester.pumpWidget(
+        _withProvider(
+          SwrConfig(
+            cache: InMemoryCache(),
+            onSuccess: (data, key) => calls.add((data, key)),
+          ),
+          Column(
+            children: [
+              for (var i = 0; i < 2; i++)
+                HookBuilder(
+                  builder: (context) {
+                    useSwr<String>('cb-ok', fetcher: () async => 'hello');
+                    return const SizedBox();
+                  },
+                ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(calls, [('hello', 'cb-ok')]);
+    });
+
+    testWidgets('SwrConfig.onError fires on fetch failure', (tester) async {
+      final errors = <(Object, Object)>[];
+      var successes = 0;
+
+      await tester.pumpWidget(
+        _withProvider(
+          SwrConfig(
+            cache: InMemoryCache(),
+            retry: const SwrRetryPolicy(maxAttempts: 1),
+            onError: (error, key) => errors.add((error, key)),
+            onSuccess: (_, _) => successes++,
+          ),
+          HookBuilder(
+            builder: (context) {
+              useSwr<String>('cb-err', fetcher: () async => throw 'boom');
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(errors, [('boom', 'cb-err')]);
+      expect(successes, 0);
+    });
+
+    testWidgets('per-call config callbacks override the provider\'s', (
+      tester,
+    ) async {
+      final provider = <Object?>[];
+      final perCall = <Object?>[];
+
+      await tester.pumpWidget(
+        _withProvider(
+          SwrConfig(
+            cache: InMemoryCache(),
+            onSuccess: (data, _) => provider.add(data),
+          ),
+          HookBuilder(
+            builder: (context) {
+              useSwr<int>(
+                'cb-override',
+                fetcher: () async => 3,
+                config: SwrConfig(onSuccess: (data, _) => perCall.add(data)),
+              );
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(perCall, [3]);
+      expect(provider, isEmpty);
+    });
+
+    testWidgets('bound mutate revalidation fires onSuccess', (tester) async {
+      final calls = <Object?>[];
+      late SwrMutate<int> mutate;
+      var next = 1;
+
+      await tester.pumpWidget(
+        _withProvider(
+          SwrConfig(
+            cache: InMemoryCache(),
+            onSuccess: (data, _) => calls.add(data),
+          ),
+          HookBuilder(
+            builder: (context) {
+              final (_, m) = useSwr<int>(
+                'cb-mutate',
+                fetcher: () async => next++,
+              );
+              mutate = m;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.runAsync(mutate);
+      await tester.pumpAndSettle();
+
+      expect(calls, [1, 2]);
+    });
   });
 }

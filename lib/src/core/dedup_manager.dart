@@ -34,6 +34,10 @@ class DedupManager {
     return future;
   }
 
+  /// Whether a fetch for [normalizedKey] is currently in flight, i.e.
+  /// whether a [run] right now would join it rather than start a new one.
+  bool isInFlight(Object normalizedKey) => _inFlight.containsKey(normalizedKey);
+
   /// Drops the in-flight entry for [normalizedKey] without cancelling it:
   /// callers already awaiting that future still get its result, but the
   /// next [run] for the key starts a fresh fetch. Used after a mutation so

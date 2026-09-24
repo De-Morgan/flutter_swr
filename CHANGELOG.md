@@ -14,6 +14,11 @@
   unchanged.
 - Example app: products can be renamed from the detail screen, which demonstrates optimistic
   update, rollback and race protection.
+- Fixed `SwrConfig.onSuccess`/`onError` never being called. They now fire after each `useSwr`
+  fetch whose result is written to the cache, with `(data or error, key)`. This includes polling,
+  app-resume, and `mutate` revalidations. Each fetch fires once, even when several hooks share it
+  through dedup. A fetch whose result is discarded because a `useSwrMutation` overlapped it fires
+  neither callback. An exception thrown by a callback is not recorded as a fetch error.
 
 ## 0.2.0 - 2026-09-21
 

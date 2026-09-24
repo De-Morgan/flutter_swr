@@ -141,5 +141,19 @@ void main() {
         expect(await manager.run('missing', () async => 7), 7);
       });
     });
+
+    test('isInFlight tracks a fetch from start to completion', () async {
+      final manager = DedupManager();
+      final completer = Completer<int>();
+      expect(manager.isInFlight('k'), isFalse);
+
+      final future = manager.run('k', () => completer.future);
+      expect(manager.isInFlight('k'), isTrue);
+      expect(manager.isInFlight('other'), isFalse);
+
+      completer.complete(1);
+      await future;
+      expect(manager.isInFlight('k'), isFalse);
+    });
   });
 }

@@ -60,6 +60,15 @@ import 'swr_response.dart';
     );
   }, [normalizedKey]);
 
+  // Refreshed every build so the controller's revalidations — including
+  // ones not started by this hook (app resume, cascade/global `mutate`) —
+  // report to the current config's callbacks.
+  if (controller != null) {
+    controller
+      ..onSuccess = resolvedConfig.onSuccess
+      ..onError = resolvedConfig.onError;
+  }
+
   Future<T> effectiveFetcher() async {
     if (fetcher != null) return fetcher();
     final configFetcher = resolvedConfig.fetcher;

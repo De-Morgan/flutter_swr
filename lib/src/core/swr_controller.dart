@@ -43,6 +43,16 @@ class SwrController<T> {
   /// `null` until [revalidate] has been called at least once with one.
   Future<T> Function()? _lastFetcher;
 
+  /// Called with the result of every fetch this controller starts that
+  /// gets written to [cache] — see [revalidate] for exactly when. Set by
+  /// the hook layer from `SwrConfig.onSuccess`; like [_lastFetcher], the
+  /// most recently set value is what fetcher-less revalidations (app
+  /// resume, cascade/global `mutate`) use.
+  void Function(Object? data, Object key)? onSuccess;
+
+  /// Error counterpart of [onSuccess], set from `SwrConfig.onError`.
+  void Function(Object error, Object key)? onError;
+
   /// Whether [revalidate] has ever been called with a fetcher — i.e.
   /// whether calling it again with none would succeed instead of throwing.
   bool get hasFetcher => _lastFetcher != null;
@@ -77,6 +87,14 @@ class SwrController<T> {
   /// [MutationTracker.shouldDiscard]), the result — success or failure — is
   /// discarded rather than written, since it may predate the mutation; only
   /// `isValidating` is cleared.
+  ///
+  /// Once the outcome is written, [onSuccess] or [onError] is called —
+  /// but only by the call that actually started the fetch. A call that
+  /// joined an already-in-flight fetch via dedup, or whose result was
+  /// discarded, fires neither, so each fetch reports at most once (as in
+  /// React SWR). Callbacks run outside the error capture above: an
+  /// exception thrown by one propagates from the returned future instead
+  /// of being recorded as a fetch error.
   Future<void> revalidate({Future<T> Function()? fetcher}) async {
     final seq = ++_revalidationSeq;
     final fetchEpoch = mutations.epoch;
@@ -85,6 +103,8 @@ class SwrController<T> {
       (currentEntry ?? const CacheEntry()).copyWith(isValidating: true),
     );
 
+    var startedFetch = true;
+    T result;
     try {
       final effectiveFetcher = fetcher ?? _lastFetcher;
       if (effectiveFetcher == null) {
@@ -94,7 +114,8 @@ class SwrController<T> {
         );
       }
       _lastFetcher = effectiveFetcher;
-      final result = await dedupManager.run<T>(
+      startedFetch = !dedupManager.isInFlight(key);
+      result = await dedupManager.run<T>(
         key,
         () => executeWithRetry(effectiveFetcher, retryPolicy),
       );
@@ -114,7 +135,10 @@ class SwrController<T> {
           isValidating: false,
         ),
       );
+      if (startedFetch) onError?.call(error, key);
+      return;
     }
+    if (startedFetch) onSuccess?.call(result, key);
   }
 
   /// A discarded fetch only clears `isValidating`, and only if no newer

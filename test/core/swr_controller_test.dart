@@ -260,6 +260,103 @@ void main() {
     );
   });
 
+  group('SwrController callbacks', () {
+    test('onSuccess fires with the fetched data and key', () async {
+      final controller = _controller<int>();
+      final calls = <(Object?, Object)>[];
+      controller.onSuccess = (data, key) => calls.add((data, key));
+
+      await controller.revalidate(fetcher: () async => 7);
+
+      expect(calls, [(7, 'k')]);
+    });
+
+    test('onError fires with the error and key; onSuccess does not', () async {
+      final controller = _controller<int>();
+      final errors = <(Object, Object)>[];
+      var successes = 0;
+      controller
+        ..onError = ((error, key) => errors.add((error, key)))
+        ..onSuccess = ((_, _) => successes++);
+
+      await controller.revalidate(fetcher: () async => throw 'boom');
+
+      expect(errors, [('boom', 'k')]);
+      expect(successes, 0);
+    });
+
+    test('onError fires when no fetcher is available', () async {
+      final controller = _controller<int>();
+      final errors = <Object>[];
+      controller.onError = (error, _) => errors.add(error);
+
+      await controller.revalidate();
+
+      expect(errors.single, isA<StateError>());
+    });
+
+    test('a call that joins a deduped fetch does not fire again', () async {
+      final controller = _controller<int>();
+      final completer = Completer<int>();
+      var successes = 0;
+      controller.onSuccess = (_, _) => successes++;
+
+      final a = controller.revalidate(fetcher: () => completer.future);
+      final b = controller.revalidate(fetcher: () => completer.future);
+      completer.complete(1);
+      await Future.wait([a, b]);
+
+      expect(successes, 1);
+    });
+
+    test(
+      'a fetch discarded by an overlapping mutation fires neither',
+      () async {
+        final mutations = MutationTracker();
+        final controller = _controller<int>(mutations: mutations);
+        final completer = Completer<int>();
+        var calls = 0;
+        controller
+          ..onSuccess = ((_, _) => calls++)
+          ..onError = ((_, _) => calls++);
+
+        final future = controller.revalidate(fetcher: () => completer.future);
+        final token = mutations.begin('k');
+        completer.complete(1);
+        await future;
+        mutations.end(token);
+
+        expect(calls, 0);
+      },
+    );
+
+    test('fetcher-less revalidations use the remembered callbacks', () async {
+      final controller = _controller<int>();
+      final calls = <Object?>[];
+      await controller.revalidate(fetcher: () async => 1);
+      controller.onSuccess = (data, _) => calls.add(data);
+
+      await controller.revalidate();
+
+      expect(calls, [1]);
+    });
+
+    test(
+      'a throwing callback propagates instead of becoming a fetch error',
+      () async {
+        final controller = _controller<int>();
+        controller.onSuccess = (_, _) => throw StateError('callback');
+
+        await expectLater(
+          controller.revalidate(fetcher: () async => 1),
+          throwsStateError,
+        );
+        expect(controller.currentEntry!.data, 1);
+        expect(controller.currentEntry!.error, isNull);
+      },
+    );
+  });
+
   group('SwrControllerRegistry', () {
     test('controllerFor returns the same controller for a repeated key', () {
       final registry = SwrControllerRegistry(InMemoryCache());
