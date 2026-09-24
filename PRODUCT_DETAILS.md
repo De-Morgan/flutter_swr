@@ -346,23 +346,19 @@ Future<void> updateName(String newName) async {
 ### Pagination / infinite loading (Post-MVP)
 
 ```dart
-final (pages, setSize, size) = useSwrInfinite<List<Post>>(
-  getKey: (pageIndex, previousPageData) {
+final (pages, infinite) = useSwrInfinite<List<Post>>(
+  (pageIndex, previousPageData) {
     if (previousPageData != null && previousPageData.isEmpty) return null; // end
     return '/api/posts?page=$pageIndex';
   },
-  fetcher: (key) => api.fetchPosts(key),
+  fetcher: (key) => api.fetchPosts(key as String),
 );
 
 ListView.builder(
   itemCount: pages.data?.expand((p) => p).length ?? 0,
   // ...
 );
-
-TextButton(
-  onPressed: () => setSize(size + 1),
-  child: const Text('Load more'),
-);
+// "Load more": infinite.setSize(infinite.size + 1), hidden once infinite.isReachingEnd.
 ```
 
 ### Conditional / dependent fetching
@@ -431,13 +427,28 @@ final (profileAsync, _) = useSwr<Profile>(
 
 **Explicitly Post-MVP / not in the initial release** (per product decision — see §16), and the lowest-priority Post-MVP item given its complexity relative to its necessity for delivering SWR's core value.
 
-Proposed shape, mirroring [`useSWRInfinite`](https://swr.vercel.app/docs/pagination):
+Delivered (see [USESWRINFINITE.md](USESWRINFINITE.md) for the full design), mirroring
+[`useSWRInfinite`](https://swr.vercel.app/docs/pagination):
 
-- `useSwrInfinite<T>({ required Object? Function(int pageIndex, T? previousPageData) getKey, required Future<T> Function(Object key) fetcher })`.
-- `getKey` returns `null` to signal the end of the list — same convention as SWR.
-- Returns pages as a `SwrResponse<List<T>>`-shaped value (a list of per-page results) plus `size`/`setSize` for "load more" control.
-- Sequential fetching (each page depends on the previous) is the default, matching cursor-based APIs; a `parallel: true` opt-in fetches all pages independently for index-based APIs, with the tradeoff that `previousPageData` is unavailable in that mode (same tradeoff SWR documents).
-- `revalidateFirstPage`-equivalent option to always refresh page 0 on mount, `persistSize`-equivalent to keep the loaded page count stable across key changes.
+- `useSwrInfinite<T>(getKey, {fetcher, options, config})` returns
+  `(SwrResponse<List<T>>, SwrInfinite<T>)`. `T` is one page. `SwrInfinite` carries `size`,
+  `setSize` (completes with the new response), a bound `mutate` that refetches every page, and
+  `isLoadingMore`/`isReachingEnd`, which React leaves callers to derive.
+- `getKey` returns `null` to signal the end of the list, the same convention as SWR.
+- Sequential fetching (each page can depend on the previous) is the default, matching cursor-based
+  APIs. `parallel: true` fetches all pages at once for index-based APIs, with `previousPageData`
+  always `null` (the same tradeoff SWR documents).
+- `revalidateFirstPage` (default `true`), `revalidateAll`, `initialSize` and `persistSize` match
+  React's options and defaults.
+- **Why one cached list rather than one controller per page:** page *i*'s key depends on page
+  *i-1*'s data, so the page count is only known by running the loop. N controllers would render a
+  half-loaded list and need dedup, retry, resume, polling and race protection coordinated across
+  them. As one cache entry with an ordinary `SwrController`, the list gets all of these unchanged,
+  with no changes to `core/`. Each page is still written under its own key. React uses the same
+  design.
+- `swrInfiniteKey(getKey)` (React's `unstable_serialize`) exposes the list's key for the top-level
+  `mutate` and `useSwrMutation`. `mutate(pageKey)` updates a page's entry but not the list, as in
+  React.
 
 ## 14. Configuration
 
@@ -511,7 +522,7 @@ Middleware is not on either list — it is out of scope for this package entirel
 | `optimisticData` / `rollbackOnError` | `SwrMutationOptions.optimisticData` / `rollbackOnError` on `useSwrMutation` | Post-MVP (delivered 0.3.0) | `optimisticData` is function-only and also receives the trigger argument. Not on the bound `mutate`; the manual pattern (§8) still works there. |
 | `populateCache` | Implicit in own-key `mutate` write | Yes | No separate flag needed at MVP scope. |
 | `useSWRMutation` | `useSwrMutation<T, Arg>(fetcher, {key, options})` | Post-MVP (delivered 0.3.0) | Returns `(SwrMutationState<T>, SwrTrigger<T, Arg>)`; `reset` lives on the trigger. Optional `key` means "unbound", not "disabled". `populateCache` is split into a bool + `populateCacheWith`. See USESWRMUTATION.md. |
-| `useSWRInfinite` | `useSwrInfinite<T>` | No | Lowest-priority Post-MVP item. |
+| `useSWRInfinite` | `useSwrInfinite<T>` | No | Post-MVP; delivered. See §13 and USESWRINFINITE.md. |
 | Conditional fetching (`null` key) | `useSwr(null)` skips the fetch | Yes | |
 | Dependent fetching (key derived from another hook, throws/returns falsy until ready) | Same pattern — key expression returns `null` until the dependency is ready | Yes | |
 | Cache provider interface (Map-like) | `SwrCache` interface, pluggable via `SwrProvider` | Yes (in-memory default); pluggable persisted providers Post-MVP | |

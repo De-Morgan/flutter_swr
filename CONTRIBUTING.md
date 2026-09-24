@@ -24,8 +24,9 @@ lib/
     cache/                # SwrCache interface, InMemoryCache, key normalization
     core/                 # dedup manager, retry policy, scheduler, SwrController
     mutation/              # bound + global mutate
+    infinite/              # useSwrInfinite's page loop, list key and options
     config/                # SwrConfig, SwrProvider
-    hooks/                 # useSwr, SwrResponse
+    hooks/                 # useSwr, SwrResponse, useSwrMutation, useSwrInfinite
     lifecycle/              # app-lifecycle-driven revalidation
 test/                       # mirrors lib/src/ 1:1 — every file has a matching test file
 example/                    # runnable demo app (fake in-memory API, no network)
@@ -53,8 +54,8 @@ Guidelines the existing suite follows and new tests should too:
 - **No real network or real delays.** Fetchers are fakes you control; timing
   (retry backoff, polling intervals, dedup windows) is driven by injected
   clocks or the `fake_async` package, never `Future.delayed` in real time.
-- **Pure-Dart modules stay pure-Dart.** Code under `cache/`, `core/`, and
-  `mutation/` must not import `flutter` or `flutter_hooks` — keep it testable
+- **Pure-Dart modules stay pure-Dart.** Code under `cache/`, `core/`,
+  `mutation/`, and `infinite/` must not import `flutter` or `flutter_hooks` — keep it testable
   under plain `test`, not just `flutter_test`.
 - **Widget/hook-facing code** (`hooks/`, `config/`, `lifecycle/`) is tested
   with `flutter_test`, using `HookBuilder` or the example app's fake API where
