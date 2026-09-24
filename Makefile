@@ -3,9 +3,6 @@
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-16s %s\n", $$1, $$2}'
 
-deps: ## Install dependencies
-	flutter pub get
-
 FORMAT_PATHS := lib test example/lib
 
 format: ## Format Dart sources in place
@@ -13,6 +10,9 @@ format: ## Format Dart sources in place
 
 format-check: ## Fail if any Dart source is not formatted
 	dart format --output=none --set-exit-if-changed $(FORMAT_PATHS)
+
+deps: format ## Format dart source and Install dependencies
+	flutter pub get
 
 test: deps ## Run the full test suite
 	flutter test
