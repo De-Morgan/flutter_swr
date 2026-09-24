@@ -5,6 +5,7 @@ import 'package:flutter_swr/flutter_swr.dart';
 import '../../models/product.dart';
 import '../../widgets/swr_status_bar.dart';
 import '../../widgets/swr_view.dart';
+import '../users/users_screen.dart';
 import 'product_detail_screen.dart';
 import 'widgets/product_card.dart';
 
@@ -30,6 +31,13 @@ class ProductListScreen extends HookWidget {
       appBar: AppBar(
         title: const Text('Store'),
         actions: [
+          IconButton(
+            tooltip: 'Users (pagination demo)',
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const UsersScreen())),
+            icon: const Icon(Icons.people_outline),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: mutateProducts,
