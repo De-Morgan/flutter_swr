@@ -47,6 +47,18 @@ class Product {
   final String image;
   final Rating rating;
 
+  Product copyWith({String? title}) {
+    return Product(
+      id: id,
+      title: title ?? this.title,
+      price: price,
+      description: description,
+      category: category,
+      image: image,
+      rating: rating,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
