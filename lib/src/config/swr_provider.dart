@@ -20,8 +20,7 @@ class SwrProvider extends StatelessWidget {
   /// Falls back to [SwrConfig.defaults] when no [SwrProvider] is present
   /// in the tree, so `useSwr` works with zero setup.
   static SwrConfig of(BuildContext context) {
-    final scope = context
-        .dependOnInheritedWidgetOfExactType<_SwrConfigScope>();
+    final scope = context.dependOnInheritedWidgetOfExactType<_SwrConfigScope>();
     return scope?.config ?? SwrConfig.defaults;
   }
 
@@ -30,7 +29,9 @@ class SwrProvider extends StatelessWidget {
     final ancestor = context
         .getInheritedWidgetOfExactType<_SwrConfigScope>()
         ?.config;
-    final merged = ancestor == null ? config.withDefaults() : ancestor.merge(config);
+    final merged = ancestor == null
+        ? config.withDefaults()
+        : ancestor.merge(config);
     return _SwrConfigScope(config: merged, child: child);
   }
 }

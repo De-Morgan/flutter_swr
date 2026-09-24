@@ -29,31 +29,28 @@ void main() {
       });
     });
 
-    test(
-      'rethrows the final error after maxAttempts with exactly maxAttempts '
-      'invocations',
-      () {
-        fakeAsync((async) {
-          var invocations = 0;
-          Object? error;
+    test('rethrows the final error after maxAttempts with exactly maxAttempts '
+        'invocations', () {
+      fakeAsync((async) {
+        var invocations = 0;
+        Object? error;
 
-          Future<String> fetcher() async {
-            invocations++;
-            throw 'boom-$invocations';
-          }
+        Future<String> fetcher() async {
+          invocations++;
+          throw 'boom-$invocations';
+        }
 
-          executeWithRetry(
-            fetcher,
-            const SwrRetryPolicy(maxAttempts: 3),
-          ).then<void>((_) {}, onError: (Object e) => error = e);
+        executeWithRetry(
+          fetcher,
+          const SwrRetryPolicy(maxAttempts: 3),
+        ).then<void>((_) {}, onError: (Object e) => error = e);
 
-          async.elapse(const Duration(minutes: 5));
+        async.elapse(const Duration(minutes: 5));
 
-          expect(error, 'boom-3');
-          expect(invocations, 3);
-        });
-      },
-    );
+        expect(error, 'boom-3');
+        expect(invocations, 3);
+      });
+    });
 
     test('shouldRetry returning false stops immediately', () {
       fakeAsync((async) {
@@ -67,10 +64,7 @@ void main() {
 
         executeWithRetry(
           fetcher,
-          const SwrRetryPolicy(
-            maxAttempts: 10,
-            shouldRetry: _neverRetry,
-          ),
+          const SwrRetryPolicy(maxAttempts: 10, shouldRetry: _neverRetry),
         ).then<void>((_) {}, onError: (Object e) => error = e);
 
         async.elapse(const Duration(minutes: 5));

@@ -181,10 +181,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await expectLater(
-          mutateA(invalidate: ['never-mounted']),
-          completes,
-        );
+        await expectLater(mutateA(invalidate: ['never-mounted']), completes);
         expect(cache.get<String>('never-mounted'), isNull);
       },
     );

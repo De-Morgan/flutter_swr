@@ -92,8 +92,8 @@ class _PollSubscription {
   }
 }
 
-final Map<SwrControllerRegistry, RevalidationScheduler>
-_schedulersByRegistry = {};
+final Map<SwrControllerRegistry, RevalidationScheduler> _schedulersByRegistry =
+    {};
 
 /// The [RevalidationScheduler] scoped to [registry], creating one on first
 /// use. One scheduler per registry (i.e. per [SwrCache] instance) mirrors
@@ -101,8 +101,5 @@ _schedulersByRegistry = {};
 /// this scheduler's [RevalidationScheduler.pauseAll]/[resumeAll] into that
 /// registry's lifecycle listener.
 RevalidationScheduler schedulerFor(SwrControllerRegistry registry) {
-  return _schedulersByRegistry.putIfAbsent(
-    registry,
-    RevalidationScheduler.new,
-  );
+  return _schedulersByRegistry.putIfAbsent(registry, RevalidationScheduler.new);
 }

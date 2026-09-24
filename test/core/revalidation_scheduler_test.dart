@@ -64,26 +64,29 @@ void main() {
       });
     });
 
-    test('pauseAll freezes ticking, resumeAll revalidates immediately and restarts', () {
-      fakeAsync((async) {
-        final scheduler = RevalidationScheduler();
-        var ticks = 0;
+    test(
+      'pauseAll freezes ticking, resumeAll revalidates immediately and restarts',
+      () {
+        fakeAsync((async) {
+          final scheduler = RevalidationScheduler();
+          var ticks = 0;
 
-        scheduler.subscribe('k', const Duration(seconds: 10), () => ticks++);
-        async.elapse(const Duration(seconds: 10));
-        expect(ticks, 1);
+          scheduler.subscribe('k', const Duration(seconds: 10), () => ticks++);
+          async.elapse(const Duration(seconds: 10));
+          expect(ticks, 1);
 
-        scheduler.pauseAll();
-        async.elapse(const Duration(seconds: 30));
-        expect(ticks, 1); // frozen while paused
+          scheduler.pauseAll();
+          async.elapse(const Duration(seconds: 30));
+          expect(ticks, 1); // frozen while paused
 
-        scheduler.resumeAll();
-        expect(ticks, 2); // immediate revalidation on resume
+          scheduler.resumeAll();
+          expect(ticks, 2); // immediate revalidation on resume
 
-        async.elapse(const Duration(seconds: 10));
-        expect(ticks, 3); // timer restarted
-      });
-    });
+          async.elapse(const Duration(seconds: 10));
+          expect(ticks, 3); // timer restarted
+        });
+      },
+    );
 
     test('resumeAll with no subscribers is a safe no-op', () {
       fakeAsync((async) {

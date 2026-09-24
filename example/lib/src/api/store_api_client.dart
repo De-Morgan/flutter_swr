@@ -16,8 +16,7 @@ class StoreApiException implements Exception {
 /// Thin HTTP wrapper around the Fake Store API: owns the base URL and the
 /// `http.Client`, and turns network/decode failures into [StoreApiException].
 class StoreApiClient {
-  StoreApiClient({http.Client? client})
-    : _client = client ?? http.Client();
+  StoreApiClient({http.Client? client}) : _client = client ?? http.Client();
 
   static const String baseUrl = 'https://fakestoreapi.com';
 

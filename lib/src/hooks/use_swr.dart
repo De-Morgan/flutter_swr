@@ -121,7 +121,11 @@ import 'swr_response.dart';
   if (normalizedKey == null) {
     return (
       const SwrResponse(isLoading: false, isValidating: false),
-      ({T? data, T Function(T?)? updater, List<Object> invalidate = const []}) async {},
+      ({
+        T? data,
+        T Function(T?)? updater,
+        List<Object> invalidate = const [],
+      }) async {},
     );
   }
 

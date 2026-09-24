@@ -31,7 +31,11 @@ SwrMutate<T> bindMutate<T>(
   Future<T> Function() effectiveFetcher,
   SwrControllerRegistry registry,
 ) {
-  return ({T? data, T Function(T?)? updater, List<Object> invalidate = const []}) async {
+  return ({
+    T? data,
+    T Function(T?)? updater,
+    List<Object> invalidate = const [],
+  }) async {
     if (data != null || updater != null) {
       final next = updater != null
           ? updater(controller.currentEntry?.data)

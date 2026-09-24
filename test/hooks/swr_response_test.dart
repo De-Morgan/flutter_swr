@@ -4,32 +4,35 @@ import 'package:test/test.dart';
 void main() {
   group('SwrResponse', () {
     group('when', () {
-      test('loading state (no data, no error, isLoading true) calls loading', () {
-        const response = SwrResponse<String>(isLoading: true, isValidating: true);
-        final result = response.when(
-          data: (d) => 'data:$d',
-          error: (e, stackTrace) => 'error:$e',
-          loading: () => 'loading',
-        );
-        expect(result, 'loading');
-      });
-
       test(
-        'the idle useSwr(null) state (no data, no error, isLoading false) '
-        'is treated as loading instead of crashing on a null cast',
+        'loading state (no data, no error, isLoading true) calls loading',
         () {
           const response = SwrResponse<String>(
-            isLoading: false,
-            isValidating: false,
+            isLoading: true,
+            isValidating: true,
           );
           final result = response.when(
             data: (d) => 'data:$d',
             error: (e, stackTrace) => 'error:$e',
-            loading: () => 'idle-or-loading',
+            loading: () => 'loading',
           );
-          expect(result, 'idle-or-loading');
+          expect(result, 'loading');
         },
       );
+
+      test('the idle useSwr(null) state (no data, no error, isLoading false) '
+          'is treated as loading instead of crashing on a null cast', () {
+        const response = SwrResponse<String>(
+          isLoading: false,
+          isValidating: false,
+        );
+        final result = response.when(
+          data: (d) => 'data:$d',
+          error: (e, stackTrace) => 'error:$e',
+          loading: () => 'idle-or-loading',
+        );
+        expect(result, 'idle-or-loading');
+      });
 
       test('data present calls data with the raw value', () {
         const response = SwrResponse<String>(
@@ -94,43 +97,37 @@ void main() {
         },
       );
 
-      test(
-        'skipLoadingOnRefresh: false shows loading while revalidating '
-        'existing data',
-        () {
-          const response = SwrResponse<String>(
-            data: 'stale',
-            isLoading: false,
-            isValidating: true,
-          );
-          final result = response.when(
-            data: (d) => 'data:$d',
-            error: (e, stackTrace) => 'error:$e',
-            loading: () => 'loading',
-            skipLoadingOnRefresh: false,
-          );
-          expect(result, 'loading');
-        },
-      );
+      test('skipLoadingOnRefresh: false shows loading while revalidating '
+          'existing data', () {
+        const response = SwrResponse<String>(
+          data: 'stale',
+          isLoading: false,
+          isValidating: true,
+        );
+        final result = response.when(
+          data: (d) => 'data:$d',
+          error: (e, stackTrace) => 'error:$e',
+          loading: () => 'loading',
+          skipLoadingOnRefresh: false,
+        );
+        expect(result, 'loading');
+      });
 
-      test(
-        'skipLoadingOnReload: true shows the prior error while retrying, '
-        'instead of loading',
-        () {
-          const response = SwrResponse<String>(
-            error: 'boom',
-            isLoading: false,
-            isValidating: true,
-          );
-          final result = response.when(
-            data: (d) => 'data:$d',
-            error: (e, stackTrace) => 'error:$e',
-            loading: () => 'loading',
-            skipLoadingOnReload: true,
-          );
-          expect(result, 'error:boom');
-        },
-      );
+      test('skipLoadingOnReload: true shows the prior error while retrying, '
+          'instead of loading', () {
+        const response = SwrResponse<String>(
+          error: 'boom',
+          isLoading: false,
+          isValidating: true,
+        );
+        final result = response.when(
+          data: (d) => 'data:$d',
+          error: (e, stackTrace) => 'error:$e',
+          loading: () => 'loading',
+          skipLoadingOnReload: true,
+        );
+        expect(result, 'error:boom');
+      });
     });
 
     group('map', () {

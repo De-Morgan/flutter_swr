@@ -5,48 +5,47 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('useSwr refreshInterval', () {
-    testWidgets(
-      'polls at the configured interval only while mounted',
-      (tester) async {
-        final cache = InMemoryCache();
-        var invocations = 0;
+    testWidgets('polls at the configured interval only while mounted', (
+      tester,
+    ) async {
+      final cache = InMemoryCache();
+      var invocations = 0;
 
-        await tester.pumpWidget(
-          SwrProvider(
-            config: SwrConfig(
-              cache: cache,
-              refreshInterval: const Duration(seconds: 10),
-            ),
-            child: HookBuilder(
-              builder: (context) {
-                useSwr<String>(
-                  'k',
-                  fetcher: () async {
-                    invocations++;
-                    return 'v$invocations';
-                  },
-                );
-                return const SizedBox();
-              },
-            ),
+      await tester.pumpWidget(
+        SwrProvider(
+          config: SwrConfig(
+            cache: cache,
+            refreshInterval: const Duration(seconds: 10),
           ),
-        );
-        await tester.pumpAndSettle();
-        expect(invocations, 1); // initial fetch on mount
+          child: HookBuilder(
+            builder: (context) {
+              useSwr<String>(
+                'k',
+                fetcher: () async {
+                  invocations++;
+                  return 'v$invocations';
+                },
+              );
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(invocations, 1); // initial fetch on mount
 
-        await tester.pump(const Duration(seconds: 9));
-        expect(invocations, 1); // not yet due
+      await tester.pump(const Duration(seconds: 9));
+      expect(invocations, 1); // not yet due
 
-        await tester.pump(const Duration(seconds: 1));
-        expect(invocations, 2); // timer fired
+      await tester.pump(const Duration(seconds: 1));
+      expect(invocations, 2); // timer fired
 
-        await tester.pumpWidget(const SizedBox());
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
 
-        await tester.pump(const Duration(seconds: 30));
-        expect(invocations, 2); // unmounted: timer stopped
-      },
-    );
+      await tester.pump(const Duration(seconds: 30));
+      expect(invocations, 2); // unmounted: timer stopped
+    });
 
     testWidgets('no refreshInterval means no polling', (tester) async {
       final cache = InMemoryCache();
@@ -105,9 +104,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(invocations, 1);
 
-        tester.binding.handleAppLifecycleStateChanged(
-          AppLifecycleState.paused,
-        );
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
         await tester.pump(const Duration(seconds: 30));
         expect(invocations, 1); // frozen while paused
 

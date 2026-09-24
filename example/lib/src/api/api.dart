@@ -7,4 +7,6 @@ import 'store_fetcher.dart';
 /// single-feature example this keeps the wiring obvious.
 final StoreApiClient storeApiClient = StoreApiClient();
 final StoreFetcher storeFetcher = StoreFetcher(storeApiClient);
-final ProductsRepository productsRepository = ProductsRepository(storeApiClient);
+final ProductsRepository productsRepository = ProductsRepository(
+  storeApiClient,
+);
