@@ -1,6 +1,6 @@
 name: flutter_swr
 description: "A Flutter Hooks port of SWR: cache-then-revalidate data fetching with dedup, retry, polling, and app-resume revalidation."
-version: 0.2.0
+version: 0.3.0
 homepage: https://github.com/De-Morgan/flutter_swr
 
 environment:
@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   collection: ^1.19.0
-  flutter_hooks: ^0.21.2
+  flutter_hooks: ^0.21.3+1
 
 dev_dependencies:
   flutter_test:

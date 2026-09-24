@@ -28,6 +28,14 @@ class StoreApiClient {
   Future<dynamic> delete(String path) =>
       _send(() => _client.delete(_uri(path)));
 
+  Future<dynamic> put(String path, Object body) => _send(
+    () => _client.put(
+      _uri(path),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ),
+  );
+
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
   Future<dynamic> _send(Future<http.Response> Function() request) async {

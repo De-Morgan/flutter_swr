@@ -3,6 +3,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_swr/flutter_swr.dart';
 
 import '../../api/api.dart';
+import '../../api/store_api_client.dart';
 import '../../models/product.dart';
 import '../../widgets/store_network_image.dart';
 import '../../widgets/swr_status_bar.dart';
@@ -36,6 +37,66 @@ class ProductDetailScreen extends HookWidget {
     final (productsListResponse, _) = useSwr<List<Product>>('/products');
 
     final effective = productResponse.data ?? initial;
+
+    // Renames the product in place. The new title shows immediately
+    // (optimisticData), the server's copy replaces it when the PUT returns
+    // (populateCache), and a failure puts the old title back (rollback).
+    // Any `useSwr('/products/$productId')` fetch that was already in flight
+    // when the rename started is discarded, so it can't overwrite the
+    // rename with pre-rename data.
+    final (renameState, trigger) = useSwrMutation<Product, String>(
+      (title) async {
+        // Demo-only failure switch, so the rollback can be seen: the Fake
+        // Store API accepts every PUT.
+        if (title.toLowerCase().contains('fail')) {
+          await Future.delayed(Duration(seconds: 2));
+          throw StoreApiException('Rename rejected (demo).');
+        }
+        final current = productResponse.data ?? initial;
+        return productsRepository.updateProduct(
+          current!.copyWith(title: title),
+        );
+      },
+      key: '/products/$productId',
+      options: SwrMutationOptions(
+        optimisticData: (current, title) =>
+            (current ?? initial)?.copyWith(title: title),
+        populateCache: true,
+        // The Fake Store API doesn't persist writes: a GET after this PUT
+        // returns the seed data, so revalidating would visibly undo the
+        // rename.
+        revalidate: false,
+        onSuccess: (updated, _, _) {
+          final list = productsListResponse.data;
+          if (list == null) return;
+          mutate<List<Product>>(
+            '/products',
+            data: [for (final p in list) p.id == updated.id ? updated : p],
+            revalidate: false,
+          );
+        },
+      ),
+    );
+
+    Future<void> renameProduct() async {
+      final current = effective;
+      if (current == null) return;
+      final title = await showDialog<String>(
+        context: context,
+        builder: (context) => _RenameDialog(initialTitle: current.title),
+      );
+      if (title == null || title.trim().isEmpty) return;
+
+      try {
+        await trigger(title.trim());
+      } catch (error) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(error.toString())));
+        }
+      }
+    }
 
     Future<void> deleteProduct() async {
       final confirmed = await showDialog<bool>(
@@ -82,6 +143,13 @@ class ProductDetailScreen extends HookWidget {
       appBar: AppBar(
         title: Text(effective?.title ?? 'Product'),
         actions: [
+          IconButton(
+            tooltip: 'Rename',
+            onPressed: renameState.isMutating || effective == null
+                ? null
+                : renameProduct,
+            icon: const Icon(Icons.edit_outlined),
+          ),
           IconButton(
             onPressed: deleteProduct,
             icon: const Icon(Icons.delete_outline),
@@ -137,6 +205,37 @@ class ProductDetailScreen extends HookWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RenameDialog extends HookWidget {
+  const _RenameDialog({required this.initialTitle});
+
+  final String initialTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = useTextEditingController(text: initialTitle);
+    void submit() => Navigator.of(context).pop(controller.text);
+
+    return AlertDialog(
+      title: const Text('Rename product'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          helperText: 'Include "fail" to see a rollback.',
+        ),
+        onSubmitted: (_) => submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: submit, child: const Text('Save')),
+      ],
     );
   }
 }

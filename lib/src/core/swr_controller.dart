@@ -1,6 +1,7 @@
 import '../cache/cache_entry.dart';
 import '../cache/swr_cache.dart';
 import 'dedup_manager.dart';
+import 'mutation_tracker.dart';
 import 'retry_policy.dart';
 
 /// Owns the stale-while-revalidate state machine for a single normalized
@@ -14,7 +15,8 @@ class SwrController<T> {
     required this.dedupManager,
     required this.retryPolicy,
     this.revalidateOnFocus = true,
-  });
+    MutationTracker? mutations,
+  }) : mutations = mutations ?? MutationTracker();
 
   /// The already-normalized cache key this controller owns.
   final Object key;
@@ -25,6 +27,14 @@ class SwrController<T> {
   /// Whether [AppLifecycleListener][] should revalidate this key when the
   /// app resumes from the background. See [SwrConfig.revalidateOnFocus].
   final bool revalidateOnFocus;
+
+  /// The owning registry's [MutationTracker]. A fetch that a mutation on
+  /// [key] overlapped is discarded instead of written (see [revalidate]).
+  final MutationTracker mutations;
+
+  /// Incremented by every [revalidate] call, so a discarded fetch only
+  /// clears `isValidating` if no newer revalidation has started since.
+  int _revalidationSeq = 0;
 
   /// The most recently supplied fetcher, remembered so a caller that
   /// doesn't have one at hand — cross-key cascade invalidation via
@@ -62,7 +72,14 @@ class SwrController<T> {
   /// observe the outcome via [currentEntry] / [SwrCache.watch], matching
   /// SWR's model where a failed revalidation is a state, not a rejection
   /// the caller must handle.
+  ///
+  /// If a mutation on [key] overlapped this fetch (see
+  /// [MutationTracker.shouldDiscard]), the result — success or failure — is
+  /// discarded rather than written, since it may predate the mutation; only
+  /// `isValidating` is cleared.
   Future<void> revalidate({Future<T> Function()? fetcher}) async {
+    final seq = ++_revalidationSeq;
+    final fetchEpoch = mutations.epoch;
     cache.set<T>(
       key,
       (currentEntry ?? const CacheEntry()).copyWith(isValidating: true),
@@ -81,8 +98,14 @@ class SwrController<T> {
         key,
         () => executeWithRetry(effectiveFetcher, retryPolicy),
       );
+      if (mutations.shouldDiscard(key, fetchEpoch)) {
+        return _settleDiscarded(seq);
+      }
       cache.set<T>(key, CacheEntry<T>(data: result, fetchedAt: DateTime.now()));
     } catch (error, stackTrace) {
+      if (mutations.shouldDiscard(key, fetchEpoch)) {
+        return _settleDiscarded(seq);
+      }
       cache.set<T>(
         key,
         (currentEntry ?? const CacheEntry()).copyWith(
@@ -91,6 +114,17 @@ class SwrController<T> {
           isValidating: false,
         ),
       );
+    }
+  }
+
+  /// A discarded fetch only clears `isValidating`, and only if no newer
+  /// [revalidate] on this controller has started since (that one owns the
+  /// flag).
+  void _settleDiscarded(int seq) {
+    if (seq != _revalidationSeq) return;
+    final entry = currentEntry;
+    if (entry != null && entry.isValidating) {
+      cache.set<T>(key, entry.copyWith(isValidating: false));
     }
   }
 }
@@ -105,6 +139,10 @@ class SwrControllerRegistry {
 
   final SwrCache cache;
   final DedupManager _dedupManager = DedupManager();
+
+  /// Which keys in [cache] are being mutated by `useSwrMutation`. Shared
+  /// with every controller this registry creates.
+  final MutationTracker mutations = MutationTracker();
   final Map<Object, SwrController<dynamic>> _controllers = {};
 
   /// Returns the existing controller for [normalizedKey], or creates and
@@ -129,6 +167,7 @@ class SwrControllerRegistry {
       dedupManager: _dedupManager,
       retryPolicy: retryPolicy,
       revalidateOnFocus: revalidateOnFocus,
+      mutations: mutations,
     );
     _controllers[normalizedKey] = controller;
     return controller;
@@ -143,6 +182,19 @@ class SwrControllerRegistry {
   /// [AppLifecycleListener][] to find every key it might need to revalidate
   /// on resume, including ones with no cache entry yet.
   Iterable<SwrController<dynamic>> get controllers => _controllers.values;
+
+  /// Marks the start of a mutation on [normalizedKey]: from now on, any
+  /// read fetch for the key that completes has its result discarded.
+  MutationToken beginMutation(Object normalizedKey) =>
+      mutations.begin(normalizedKey);
+
+  /// Ends the mutation [token] was returned for, and drops any in-flight
+  /// read fetch for its key from dedup so the post-mutation revalidation
+  /// starts a fresh fetch instead of joining one that will be discarded.
+  void endMutation(MutationToken token) {
+    mutations.end(token);
+    _dedupManager.forget(token.key);
+  }
 }
 
 final Map<SwrCache, SwrControllerRegistry> _registriesByCache = {};

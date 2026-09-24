@@ -84,5 +84,62 @@ void main() {
       expect(await first, 'boom');
       expect(await second, 'boom');
     });
+
+    group('forget', () {
+      test('the next run starts a fresh fetch; the forgotten future still '
+          'resolves for its callers', () async {
+        final manager = DedupManager();
+        final completers = <Completer<int>>[];
+        Future<int> fetcher() {
+          final completer = Completer<int>();
+          completers.add(completer);
+          return completer.future;
+        }
+
+        final original = manager.run('k', fetcher);
+        manager.forget('k');
+        final fresh = manager.run('k', fetcher);
+
+        expect(completers, hasLength(2));
+
+        completers[0].complete(1);
+        completers[1].complete(2);
+        expect(await original, 1);
+        expect(await fresh, 2);
+      });
+
+      test(
+        'a forgotten future completing does not evict the newer entry',
+        () async {
+          final manager = DedupManager();
+          final completers = <Completer<int>>[];
+          Future<int> fetcher() {
+            final completer = Completer<int>();
+            completers.add(completer);
+            return completer.future;
+          }
+
+          final original = manager.run('k', fetcher);
+          manager.forget('k');
+          final fresh = manager.run('k', fetcher);
+
+          completers[0].complete(1);
+          await original;
+
+          final joined = manager.run('k', fetcher);
+          expect(completers, hasLength(2));
+
+          completers[1].complete(2);
+          expect(await fresh, 2);
+          expect(await joined, 2);
+        },
+      );
+
+      test('forget on an unknown key is a no-op', () async {
+        final manager = DedupManager();
+        manager.forget('missing');
+        expect(await manager.run('missing', () async => 7), 7);
+      });
+    });
   });
 }

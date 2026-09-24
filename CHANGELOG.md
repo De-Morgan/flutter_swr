@@ -1,3 +1,20 @@
+## 0.3.0 - 2026-09-24
+
+- Added `useSwrMutation<T, Arg>(fetcher, {key, options})`, a port of React SWR's `useSWRMutation`
+  for writes that run only when triggered. It returns `(SwrMutationState<T>, SwrTrigger<T, Arg>)`.
+  With a `key` it supports `optimisticData`, `populateCache`/`populateCacheWith` and
+  `rollbackOnError`, and it revalidates the key's mounted `useSwr` readers afterwards. Without a key
+  it only tracks the call's state. Call it as `trigger(arg)`, or `trigger()` for no argument.
+  Options are set on the hook. If `trigger` is called again before the first call finishes, only
+  the latest call updates state. `trigger.reset()` returns the state to idle.
+- New public types: `SwrTrigger`, `SwrMutationOptions`, `SwrMutationState`.
+- Behavior change: `useSwr` now discards the result of a fetch that overlaps a `useSwrMutation` on
+  the same key, success or error, and clears only `isValidating`. The key is then revalidated after
+  the mutation. This only applies while a `useSwrMutation` is running on the key. `mutate` is
+  unchanged.
+- Example app: products can be renamed from the detail screen, which demonstrates optimistic
+  update, rollback and race protection.
+
 ## 0.2.0 - 2026-09-21
 
 - Added `skipError`, `skipLoadingOnReload`, and `skipLoadingOnRefresh` parameters to
