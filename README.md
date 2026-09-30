@@ -235,6 +235,98 @@ Some more details:
 - **Key-only options:** `optimisticData`, `populateCache` and `populateCacheWith` need a `key`. If you
   set them without one, debug builds throw an `AssertionError` and release builds ignore them.
 
+### `useSwrInfinite` (pagination)
+
+For "load more" lists, `useSwrInfinite` loads a list page by page. `getKey` returns each page's key
+from its index and the previous page, or `null` when there are no more pages:
+
+```dart
+final (pages, infinite) = useSwrInfinite<UsersPage>(
+  (index, previous) => previous != null && previous.isLast
+      ? null // no more pages
+      : '/api/users?page=${index + 1}',
+  fetcher: (key) => api.fetchUsersPage(key as String),
+);
+
+final users = [for (final page in pages.data ?? const <UsersPage>[]) ...page.users];
+
+if (!infinite.isReachingEnd)
+  TextButton(
+    onPressed: infinite.isLoadingMore ? null : () => infinite.setSize(infinite.size + 1),
+    child: Text(infinite.isLoadingMore ? 'Loading…' : 'Load more'),
+  );
+```
+
+- `pages` is an ordinary `SwrResponse<List<T>>` (one element per page), so `when`/`map` work as
+  usual. It only changes once a whole load finishes, so it never shows a half-loaded list.
+- `infinite.size` is how many pages are requested. `setSize(n)` loads the missing pages and completes
+  with the new response. A failure is in that response's `error`; it isn't thrown.
+- `infinite.isLoadingMore` and `infinite.isReachingEnd` read the latest state, so they're safe to
+  check after an `await`, e.g. in a refresher's load callback:
+
+  ```dart
+  onLoading: () async {
+    final result = await infinite.setSize(infinite.size + 1);
+    if (result.error != null) return refresh.loadFailed();
+    infinite.isReachingEnd ? refresh.loadNoData() : refresh.loadComplete();
+  },
+  ```
+
+- `infinite.mutate(...)` works like `useSwr`'s bound `mutate`, on the whole list, and then refetches
+  **every** page. Use it for pull-to-refresh.
+- The list is cached under `swrInfiniteKey(getKey)`, and each page under its own key too. Use
+  `mutate(swrInfiniteKey(getKey)!)` to revalidate the list from elsewhere, or pass it as
+  `useSwrMutation`'s `key` (with `T` = `List<Page>`) for optimistic list updates. `mutate(pageKey)`
+  updates only that page's entry, not the list.
+- Revalidations (mount, app resume, polling) refetch only the first page and reuse cached pages for
+  the rest. `SwrInfiniteOptions` changes that: `initialSize` (1), `revalidateFirstPage` (true),
+  `revalidateAll` (false), `persistSize` (false; keep the page count when the first page's key
+  changes) and `parallel` (false; fetch all pages at once, with `previousPageData` always `null`).
+- The number of loaded pages is remembered per list, so navigating back to a list shows the same
+  pages from cache.
+
+The example app's Users screen (people icon on the Store screen) shows it with `pull_to_refresh`
+against reqres.in.
+
+#### Ready-made widgets: `SwrInfiniteListView` and `SwrInfiniteGridView`
+
+The example app wraps `useSwrInfinite` and `pull_to_refresh`'s `SmartRefresher` in two reusable
+widgets: pull down refetches every page, pull up loads the next one, and the end of the list is
+detected for you. They live in the example app, not the package, because `pull_to_refresh` isn't a
+package dependency. To use them, copy
+[swr_infinite_view.dart](example/lib/src/widgets/swr_infinite_view.dart) into your app.
+
+```dart
+SwrInfiniteListView<UsersPage, User>(
+  getKey: UsersApi.pageKey,
+  fetcher: usersApi.fetchPage,
+  itemsOf: (page) => page.users, // flattens each page into items
+  itemBuilder: (context, user, index) => UserTile(user: user),
+)
+
+SwrInfiniteGridView<UsersPage, User>(
+  getKey: UsersApi.pageKey,
+  fetcher: usersApi.fetchPage,
+  itemsOf: (page) => page.users,
+  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2),
+  itemBuilder: (context, user, index) => UserCard(user: user),
+)
+```
+
+- `P` is the page type the fetcher returns; `I` is the item type drawn.
+- `fetcher`, `options` (`SwrInfiniteOptions`) and `config` go straight to `useSwrInfinite`.
+- Optional builders, with defaults: `loadingBuilder` (spinner), `errorBuilder(context, error, retry)`
+  (a retry panel, shown when the first load fails), `emptyBuilder` (shown inside the refresher, so
+  pull-down still works).
+- `skipError` (default `true`) keeps the items on screen when a later refresh or load-more fails.
+  Set it to `false` to show `errorBuilder` instead.
+- Every `SmartRefresher` property is passed through with its default (`controller`, `header`,
+  `footer`, `physics`, …), except that `enablePullUp` defaults to `true`. `onRefresh`/`onLoading`
+  run after the built-in refresh/load-more, not instead of it.
+- `SwrInfiniteListView` adds `separatorBuilder` and `padding`; `SwrInfiniteGridView` adds
+  `gridDelegate` and `padding`. For another layout, extend `SwrInfiniteView` and implement
+  `buildScrollable(context, items)`.
+
 ### Configuration: `SwrProvider` and `SwrConfig`
 
 Scope defaults to a subtree with `SwrProvider`, so individual `useSwr` calls don't need to repeat
@@ -373,15 +465,17 @@ flutter run
 
 ## flutter_swr vs. React SWR
 
-| React SWR                                 | flutter_swr                                                        |
-| ----------------------------------------- | ------------------------------------------------------------------ |
-| `useSWR(key, fetcher)`                    | `useSwr<T>(key, fetcher: fetcher)`                                 |
-| `<SWRConfig value={...}>`                 | `SwrProvider(config: SwrConfig(...))`                              |
-| `mutate` from `useSWRConfig()`            | top-level`mutate<T>(key, ...)`                                     |
-| `useSWRMutation(key, fetcher, options)`   | `useSwrMutation<T, Arg>(fetcher, key:, options:)` — see below      |
-| `revalidateOnFocus` (tab refocus)         | `revalidateOnFocus` (app resume)                                   |
-| `revalidateOnReconnect`                   | planned — see Roadmap                                              |
-| `data`/`error`/`isLoading`/`isValidating` | same fields on`SwrResponse<T>`, plus `when`/`map` pattern matching |
+| React SWR                                  | flutter_swr                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| `useSWR(key, fetcher)`                     | `useSwr<T>(key, fetcher: fetcher)`                                 |
+| `<SWRConfig value={...}>`                  | `SwrProvider(config: SwrConfig(...))`                              |
+| `mutate` from `useSWRConfig()`             | top-level`mutate<T>(key, ...)`                                     |
+| `useSWRMutation(key, fetcher, options)`    | `useSwrMutation<T, Arg>(fetcher, key:, options:)` — see below      |
+| `useSWRInfinite(getKey, fetcher, options)` | `useSwrInfinite<T>(getKey, fetcher:, options:)` — see below        |
+| `unstable_serialize(getKey)`               | `swrInfiniteKey(getKey)`                                           |
+| `revalidateOnFocus` (tab refocus)          | `revalidateOnFocus` (app resume)                                   |
+| `revalidateOnReconnect`                    | planned — see Roadmap                                              |
+| `data`/`error`/`isLoading`/`isValidating`  | same fields on`SwrResponse<T>`, plus `when`/`map` pattern matching |
 
 `useSwrMutation` differs from `useSWRMutation` in these ways:
 
@@ -395,6 +489,14 @@ flutter run
 - Callbacks receive `arg`, and `onError` also receives the `StackTrace`.
 - `trigger` resolves without waiting for the follow-up revalidation. A bound `mutate` does wait for
   its revalidation.
+
+`useSwrInfinite` differs from `useSWRInfinite` in these ways:
+
+- It returns a `(response, infinite)` record. `size`, `setSize` and `mutate` live on `infinite`.
+- `setSize` takes an `int`, not an updater, and must be at least 1. It completes with the new
+  response.
+- It adds `isLoadingMore` and `isReachingEnd`, which React leaves callers to derive.
+- `mutate` has no `revalidate: false` option (neither does `useSwr`'s bound `mutate`).
 
 ## Contributing
 

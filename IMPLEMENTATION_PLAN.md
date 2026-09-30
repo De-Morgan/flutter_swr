@@ -249,11 +249,22 @@ Listens for offline→online transitions and calls the same revalidation path us
 
 ### Phase 17 — `useSwrInfinite`
 
-**Files**: `src/hooks/use_swr_infinite.dart`
+**Status**: implemented. Design: [USESWRINFINITE.md](USESWRINFINITE.md).
 
-Lowest priority per PRODUCT_DETAILS.md §13/§16. Implements `getKey(pageIndex, previousPageData)`, `size`/`setSize`, sequential default with `parallel: true` opt-in, `revalidateFirstPage`/`persistSize` options. Each page is backed by its own `SwrController` (reusing Phase 5 unchanged), composed into one aggregate `SwrResponse<List<T>>`-shaped result by the hook layer.
+**Files**: `src/infinite/infinite_key.dart`, `src/infinite/swr_infinite_options.dart`,
+`src/infinite/swr_infinite_loader.dart` (pure Dart), `src/hooks/use_swr_infinite.dart`.
 
-**Acceptance criteria**: `getKey` returning `null` stops further page fetches; `setSize(n)` fetches exactly the newly-added pages (not re-fetching already-loaded ones, unless individually stale); parallel mode fetches all current pages concurrently with `previousPageData` unavailable, matching the documented tradeoff.
+Implements `getKey(pageIndex, previousPageData)`, `size`/`setSize`, sequential default with
+`parallel: true` opt-in, and `revalidateFirstPage`/`revalidateAll`/`initialSize`/`persistSize`.
+Unlike the original sketch, the pages are **not** backed by one `SwrController` each. They're
+cached together as one `List<T>` entry under `swrInfiniteKey(getKey)`, owned by an ordinary
+`SwrController` whose fetcher is the page loop. Each page is also cached under its own key. No
+`core/` changes.
+
+**Acceptance criteria**: `getKey` returning `null` stops further page fetches. `setSize(n)` fetches
+the newly-added pages plus page 0 (`revalidateFirstPage`, default `true`, as in React). Other
+already-loaded pages come from cache; there's no per-page staleness. Parallel mode fetches all
+current pages concurrently with `previousPageData` unavailable, matching the documented tradeoff.
 
 ### Phase 18 — `useSwrMutation`
 

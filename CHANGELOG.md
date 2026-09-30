@@ -1,3 +1,18 @@
+## Unreleased
+
+- Added `useSwrInfinite<T>(getKey, {fetcher, options, config})`, a port of React SWR's
+  `useSWRInfinite` for paginated lists. It returns `(SwrResponse<List<T>>, SwrInfinite<T>)`.
+  `SwrInfinite` has `size`, `setSize(n)` (completes with the new response), a bound `mutate` that
+  refetches every page, and `isLoadingMore`/`isReachingEnd`. `SwrInfiniteOptions` has
+  `initialSize`, `revalidateAll`, `revalidateFirstPage`, `persistSize` and `parallel`, with React's
+  defaults. The list is cached as one entry, so dedup, retry, polling, app-resume revalidation,
+  `onSuccess`/`onError` and `useSwrMutation` race protection all apply to it. Each page is also
+  cached under its own key.
+- Added `swrInfiniteKey(getKey)`, the key a `useSwrInfinite` list is cached under, for the
+  top-level `mutate` and `useSwrMutation` (React's `unstable_serialize`).
+- Example app: a Users screen that demonstrates `useSwrInfinite` with `pull_to_refresh` against
+  reqres.in.
+
 ## 0.3.0 - 2026-09-24
 
 - Added `useSwrMutation<T, Arg>(fetcher, {key, options})`, a port of React SWR's `useSWRMutation`

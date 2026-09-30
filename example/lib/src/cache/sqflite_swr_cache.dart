@@ -23,10 +23,11 @@ class SqfliteSwrCache implements SwrCache {
   final Database _db;
   final Map<Type, dynamic Function(Object? json)> _fromJson;
 
-  /// Raw, not-yet-decoded rows loaded from disk at [open], keyed the same
-  /// as [_entries]. Consumed (and removed) the first time [get] decodes a
-  /// key into a typed [CacheEntry].
-  final Map<Object, _RawEntry> _raw = {};
+  /// Raw, not-yet-decoded rows loaded from disk at [open], keyed by the
+  /// row's `'$key'` (so non-`String` keys like `useSwrInfinite`'s
+  /// `InfiniteKey` round-trip). Consumed (and removed) the first time [get]
+  /// decodes a key into a typed [CacheEntry].
+  final Map<String, _RawEntry> _raw = {};
 
   final Map<Object, CacheEntry<dynamic>> _entries = {};
   final Map<Object, StreamController<CacheEntry<dynamic>?>> _controllers = {};
@@ -68,7 +69,7 @@ class SqfliteSwrCache implements SwrCache {
   CacheEntry<T>? get<T>(Object key) {
     if (_entries.containsKey(key)) return _entries[key] as CacheEntry<T>?;
 
-    final raw = _raw.remove(key);
+    final raw = _raw.remove('$key');
     if (raw == null) return null;
 
     final parse = _fromJson[T];
@@ -80,7 +81,7 @@ class SqfliteSwrCache implements SwrCache {
 
   @override
   void set<T>(Object key, CacheEntry<T> entry) {
-    _raw.remove(key);
+    _raw.remove('$key');
     _entries[key] = entry;
     _controllers[key]?.add(entry);
     unawaited(_persist(key, entry));
@@ -94,7 +95,7 @@ class SqfliteSwrCache implements SwrCache {
     if (data == null || fetchedAt == null) return;
 
     await _db.insert(_table, {
-      'key': key as String,
+      'key': '$key',
       'data': jsonEncode(data, toEncodable: (o) => (o as dynamic).toJson()),
       'fetched_at': fetchedAt.millisecondsSinceEpoch,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -102,10 +103,10 @@ class SqfliteSwrCache implements SwrCache {
 
   @override
   void delete(Object key) {
-    _raw.remove(key);
+    _raw.remove('$key');
     _entries.remove(key);
     _controllers[key]?.add(null);
-    unawaited(_db.delete(_table, where: 'key = ?', whereArgs: [key]));
+    unawaited(_db.delete(_table, where: 'key = ?', whereArgs: ['$key']));
   }
 
   @override
