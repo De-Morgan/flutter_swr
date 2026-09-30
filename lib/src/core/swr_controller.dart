@@ -15,6 +15,7 @@ class SwrController<T> {
     required this.dedupManager,
     required this.retryPolicy,
     this.revalidateOnFocus = true,
+    this.revalidateOnReconnect = true,
     MutationTracker? mutations,
   }) : mutations = mutations ?? MutationTracker();
 
@@ -27,6 +28,10 @@ class SwrController<T> {
   /// Whether [AppLifecycleListener][] should revalidate this key when the
   /// app resumes from the background. See [SwrConfig.revalidateOnFocus].
   final bool revalidateOnFocus;
+
+  /// Whether a `SwrConnectivity` offline→online transition should
+  /// revalidate this key. See [SwrConfig.revalidateOnReconnect].
+  final bool revalidateOnReconnect;
 
   /// The owning registry's [MutationTracker]. A fetch that a mutation on
   /// [key] overlapped is discarded instead of written (see [revalidate]).
@@ -172,14 +177,14 @@ class SwrControllerRegistry {
   /// Returns the existing controller for [normalizedKey], or creates and
   /// registers one with the given per-key config if none exists yet.
   ///
-  /// [retryPolicy] and [dedupingInterval] only take effect when a
-  /// controller is created; once registered, a controller keeps the config
-  /// it was created with.
+  /// [retryPolicy], [revalidateOnFocus] and [revalidateOnReconnect] only
+  /// take effect when a controller is created; once registered, a
+  /// controller keeps the config it was created with.
   SwrController<T> controllerFor<T>(
     Object normalizedKey, {
     SwrRetryPolicy retryPolicy = const SwrRetryPolicy(),
-    Duration dedupingInterval = const Duration(seconds: 2),
     bool revalidateOnFocus = true,
+    bool revalidateOnReconnect = true,
   }) {
     final existing = _controllers[normalizedKey];
     if (existing != null) {
@@ -191,6 +196,7 @@ class SwrControllerRegistry {
       dedupManager: _dedupManager,
       retryPolicy: retryPolicy,
       revalidateOnFocus: revalidateOnFocus,
+      revalidateOnReconnect: revalidateOnReconnect,
       mutations: mutations,
     );
     _controllers[normalizedKey] = controller;
@@ -206,6 +212,24 @@ class SwrControllerRegistry {
   /// [AppLifecycleListener][] to find every key it might need to revalidate
   /// on resume, including ones with no cache entry yet.
   Iterable<SwrController<dynamic>> get controllers => _controllers.values;
+
+  /// Revalidates every key that is currently mounted (has at least one
+  /// cache watcher) and for which [include] returns `true`. The shared path
+  /// behind app-resume and reconnect revalidation.
+  ///
+  /// A controller that hasn't had its first fetcher-bearing revalidate yet
+  /// is skipped: `useSwr`'s own mount effect is about to give it one, and
+  /// calling revalidate() now would have no fetcher to fall back on.
+  /// [include] is only called for keys that pass those checks, so it can
+  /// have side effects (e.g. recording a throttle timestamp).
+  void revalidateMountedKeys(bool Function(SwrController<dynamic>) include) {
+    for (final controller in List.of(_controllers.values)) {
+      if (!cache.hasWatchers(controller.key)) continue;
+      if (!controller.hasFetcher) continue;
+      if (!include(controller)) continue;
+      controller.revalidate();
+    }
+  }
 
   /// Marks the start of a mutation on [normalizedKey]: from now on, any
   /// read fetch for the key that completes has its result discarded.

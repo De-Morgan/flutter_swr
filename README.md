@@ -353,6 +353,8 @@ fall through — same as a per-call `config:` merges over the nearest provider.
 | `refreshInterval`       | `Duration?`                             | none (no polling)                         | Poll this key on a fixed interval while it has an active subscriber.                   |
 | `retry`                 | `SwrRetryPolicy?`                       | 5 attempts, exponential backoff up to 30s | Retry behavior on fetcher failure.                                                     |
 | `revalidateOnFocus`     | `bool?`                                 | `true`                                    | Whether resuming the app from the background revalidates this key.                     |
+| `connectivity`          | `SwrConnectivity?`                      | none (reconnect revalidation off)         | Your source of online/offline status, used by `revalidateOnReconnect` (see below).     |
+| `revalidateOnReconnect` | `bool?`                                 | `true`                                    | Whether coming back online revalidates this key. Needs a `connectivity`.               |
 | `onError` / `onSuccess` | callbacks                               | none                                      | Side-effect hooks fired on fetch failure/success.                                      |
 | `cache`                 | `SwrCache?`                             | shared`InMemoryCache`                     | Swap in a custom cache implementation (see below).                                     |
 
@@ -381,6 +383,56 @@ Two triggers are wired up for you with no extra setup:
   `config:`) to refetch on a fixed timer. Polling is ref-counted per key (only runs while at least
   one widget is subscribed) and automatically pauses while the app is backgrounded, resuming with
   an immediate revalidation when it comes back.
+
+A third trigger, **on reconnect**, needs one line of setup (see below).
+
+### Revalidate on reconnect
+
+When the device comes back online, every mounted key with `revalidateOnReconnect: true` (the
+default) revalidates, like React SWR's `revalidateOnReconnect`. Dart has no built-in "online" event,
+and flutter_swr doesn't depend on any connectivity package. Instead, you tell it where online status
+comes from by implementing `SwrConnectivity`, which is a single `Stream<bool>` where `true` means online:
+
+```dart
+// With observe_internet_connectivity (checks that the internet is actually reachable):
+class InternetConnectivityAdapter extends SwrConnectivity {
+  @override
+  Stream<bool> get onConnectivityChanged =>
+      InternetConnectivity().observeInternetConnection;
+}
+
+// Or with connectivity_plus (reports the network interface only):
+class ConnectivityPlusAdapter extends SwrConnectivity {
+  @override
+  Stream<bool> get onConnectivityChanged => Connectivity()
+      .onConnectivityChanged
+      .map((results) => !results.contains(ConnectivityResult.none));
+}
+
+// Or wrap any existing stream:
+final connectivity = SwrConnectivity.fromStream(myOnlineStream);
+```
+
+Then pass it to a provider. Nested providers inherit it:
+
+```dart
+final connectivity = InternetConnectivityAdapter(); // create once, outside build
+
+SwrProvider(
+  config: SwrConfig(connectivity: connectivity),
+  child: const MaterialApp(home: HomeScreen()),
+);
+```
+
+- Only an offline→online transition revalidates. The stream's first value is taken as the starting
+  status, and repeated values are ignored.
+- flutter_swr listens to each `SwrConnectivity` instance once and never cancels, so create it once
+  (for example, in a static field) rather than inside `build`.
+- To opt a key out, pass `config: const SwrConfig(revalidateOnReconnect: false)` to `useSwr`.
+- Polling keeps running while offline. flutter_swr has no equivalent of React's `refreshWhenOffline` yet.
+
+The example app wires this up with `observe_internet_connectivity` in
+[internet_connectivity_adapter.dart](example/lib/src/connectivity/internet_connectivity_adapter.dart).
 
 ### Caching and deduplication
 
@@ -474,7 +526,7 @@ flutter run
 | `useSWRInfinite(getKey, fetcher, options)` | `useSwrInfinite<T>(getKey, fetcher:, options:)` — see below        |
 | `unstable_serialize(getKey)`               | `swrInfiniteKey(getKey)`                                           |
 | `revalidateOnFocus` (tab refocus)          | `revalidateOnFocus` (app resume)                                   |
-| `revalidateOnReconnect`                    | planned — see Roadmap                                              |
+| `revalidateOnReconnect`                    | `revalidateOnReconnect` + your `SwrConfig.connectivity` adapter    |
 | `data`/`error`/`isLoading`/`isValidating`  | same fields on`SwrResponse<T>`, plus `when`/`map` pattern matching |
 
 `useSwrMutation` differs from `useSWRMutation` in these ways:

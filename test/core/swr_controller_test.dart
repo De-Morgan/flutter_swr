@@ -376,5 +376,38 @@ void main() {
       final registry = SwrControllerRegistry(InMemoryCache());
       expect(registry['missing'], isNull);
     });
+
+    test('revalidateMountedKeys revalidates only watched, fetcher-bearing '
+        'keys that pass the filter', () async {
+      final registry = SwrControllerRegistry(InMemoryCache());
+      final fetches = <String, int>{};
+      Future<void> mount(String key, {bool watch = true, bool fetch = true}) {
+        final controller = registry.controllerFor<int>(key);
+        if (watch) {
+          final subscription = registry.cache.watch<int>(key).listen((_) {});
+          addTearDown(subscription.cancel);
+        }
+        if (!fetch) return Future.value();
+        return controller.revalidate(
+          fetcher: () async => fetches[key] = (fetches[key] ?? 0) + 1,
+        );
+      }
+
+      await mount('included');
+      await mount('filtered');
+      await mount('unwatched', watch: false);
+      await mount('no-fetcher', fetch: false);
+
+      final offered = <Object>[];
+      registry.revalidateMountedKeys((controller) {
+        offered.add(controller.key);
+        return controller.key != 'filtered';
+      });
+      await pumpEventQueue();
+
+      expect(offered, unorderedEquals(['included', 'filtered']));
+      expect(fetches, {'included': 2, 'filtered': 1, 'unwatched': 1});
+      expect(registry['no-fetcher']!.currentEntry, isNull);
+    });
   });
 }

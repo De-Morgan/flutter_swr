@@ -9,6 +9,7 @@ import '../cache/swr_cache.dart';
 import '../config/swr_config.dart';
 import '../config/swr_provider.dart';
 import '../core/revalidation_scheduler.dart';
+import '../core/swr_connectivity.dart';
 import '../core/swr_controller.dart';
 import '../infinite/infinite_key.dart';
 import '../infinite/swr_infinite_loader.dart';
@@ -134,11 +135,14 @@ abstract class SwrInfinite<T> {
   final controller = useMemoized<SwrController<List<T>>?>(() {
     if (listKey == null) return null;
     ensureAppLifecycleListener(registry);
+    if (resolvedConfig.connectivity case final connectivity?) {
+      ensureReconnectListener(registry, connectivity);
+    }
     return registry.controllerFor<List<T>>(
       listKey,
       retryPolicy: resolvedConfig.retry!,
-      dedupingInterval: resolvedConfig.dedupingInterval!,
       revalidateOnFocus: resolvedConfig.revalidateOnFocus!,
+      revalidateOnReconnect: resolvedConfig.revalidateOnReconnect!,
     );
   }, [listKey]);
 

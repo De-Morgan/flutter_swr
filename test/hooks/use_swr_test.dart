@@ -382,5 +382,71 @@ void main() {
 
       expect(calls, [1, 2]);
     });
+
+    testWidgets('an offline→online transition from SwrConfig.connectivity '
+        'refetches the mounted key', (tester) async {
+      final status = StreamController<bool>();
+      addTearDown(status.close);
+      var invocations = 0;
+
+      await tester.pumpWidget(
+        SwrProvider(
+          config: SwrConfig(
+            cache: InMemoryCache(),
+            connectivity: SwrConnectivity.fromStream(status.stream),
+          ),
+          child: HookBuilder(
+            builder: (context) {
+              useSwr<int>('k', fetcher: () async => ++invocations);
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(invocations, 1);
+
+      status.add(true);
+      await tester.pumpAndSettle();
+      expect(invocations, 1);
+
+      status.add(false);
+      await tester.pumpAndSettle();
+      status.add(true);
+      await tester.pumpAndSettle();
+      expect(invocations, 2);
+    });
+
+    testWidgets('revalidateOnReconnect: false opts a key out', (tester) async {
+      final status = StreamController<bool>();
+      addTearDown(status.close);
+      var invocations = 0;
+
+      await tester.pumpWidget(
+        SwrProvider(
+          config: SwrConfig(
+            cache: InMemoryCache(),
+            connectivity: SwrConnectivity.fromStream(status.stream),
+          ),
+          child: HookBuilder(
+            builder: (context) {
+              useSwr<int>(
+                'k',
+                fetcher: () async => ++invocations,
+                config: const SwrConfig(revalidateOnReconnect: false),
+              );
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      status
+        ..add(false)
+        ..add(true);
+      await tester.pumpAndSettle();
+      expect(invocations, 1);
+    });
   });
 }

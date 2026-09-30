@@ -8,6 +8,7 @@ export 'src/cache/key_normalizer.dart';
 export 'src/config/swr_config.dart';
 export 'src/config/swr_provider.dart';
 export 'src/core/retry_policy.dart';
+export 'src/core/swr_connectivity.dart' show SwrConnectivity;
 export 'src/hooks/swr_mutation_state.dart';
 export 'src/hooks/swr_response.dart';
 export 'src/hooks/use_swr.dart';

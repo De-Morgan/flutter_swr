@@ -1,6 +1,7 @@
 import '../cache/in_memory_cache.dart';
 import '../cache/swr_cache.dart';
 import '../core/retry_policy.dart';
+import '../core/swr_connectivity.dart';
 
 /// Immutable, partially-specified SWR configuration.
 ///
@@ -23,6 +24,8 @@ class SwrConfig {
     this.onSuccess,
     this.cache,
     this.revalidateOnFocus,
+    this.connectivity,
+    this.revalidateOnReconnect,
   });
 
   /// Default fetcher, resolved by key. `SwrConfig` itself isn't generic —
@@ -35,6 +38,13 @@ class SwrConfig {
   /// hole.
   final Future<dynamic> Function(Object key)? fetcher;
 
+  /// How long a cached value counts as fresh when a hook mounts (or its
+  /// key changes): within this window the hook shows the cached value
+  /// without fetching. Defaults to 2 seconds. Read on every mount, so
+  /// different calls for the same key may use different windows. It does
+  /// not throttle explicit revalidations (`mutate`, polling, resume,
+  /// reconnect); concurrent fetches for a key are always collapsed into
+  /// one regardless of this value.
   final Duration? dedupingInterval;
   final Duration? refreshInterval;
   final SwrRetryPolicy? retry;
@@ -44,9 +54,22 @@ class SwrConfig {
 
   /// Whether resuming from the background revalidates this key. Defaults
   /// to `true`, matching React SWR's `revalidateOnFocus`. Only takes effect
-  /// when a [SwrController] is created for the key — like [retry] and
-  /// [dedupingInterval], it can't be changed for a key once one exists.
+  /// when a [SwrController] is created for the key — like [retry], it
+  /// can't be changed for a key once one exists.
   final bool? revalidateOnFocus;
+
+  /// Where online/offline status comes from, for [revalidateOnReconnect].
+  /// Defaults to `null`: flutter_swr has no connectivity dependency of its
+  /// own, so reconnect revalidation is off until you plug one in (see
+  /// [SwrConnectivity]).
+  final SwrConnectivity? connectivity;
+
+  /// Whether coming back online (an offline→online transition reported by
+  /// [connectivity]) revalidates this key. Defaults to `true`, matching
+  /// React SWR's `revalidateOnReconnect`, but has no effect without a
+  /// [connectivity]. Like [revalidateOnFocus], it only takes effect when a
+  /// [SwrController] is created for the key.
+  final bool? revalidateOnReconnect;
 
   static final SwrCache _defaultCache = InMemoryCache();
   static const SwrRetryPolicy _defaultRetry = SwrRetryPolicy();
@@ -61,6 +84,7 @@ class SwrConfig {
     retry: _defaultRetry,
     cache: _defaultCache,
     revalidateOnFocus: true,
+    revalidateOnReconnect: true,
   );
 
   /// This config with any still-unset field filled in from [defaults].
@@ -79,6 +103,9 @@ class SwrConfig {
       onSuccess: child.onSuccess ?? onSuccess,
       cache: child.cache ?? cache,
       revalidateOnFocus: child.revalidateOnFocus ?? revalidateOnFocus,
+      connectivity: child.connectivity ?? connectivity,
+      revalidateOnReconnect:
+          child.revalidateOnReconnect ?? revalidateOnReconnect,
     );
   }
 }

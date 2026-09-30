@@ -287,6 +287,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "9.5.0"
+  observe_internet_connectivity:
+    dependency: "direct main"
+    description:
+      name: observe_internet_connectivity
+      sha256: cc4aa90884632c09421e99741661881e024c991525e5764e864a2f86604359e8
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.3"
   octo_image:
     dependency: transitive
     description:

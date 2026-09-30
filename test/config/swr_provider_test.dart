@@ -74,6 +74,41 @@ void main() {
       expect(resolved.retry, same(childRetry));
       expect(resolved.dedupingInterval, parentDedupingInterval);
     });
+
+    testWidgets('connectivity defaults to null, revalidateOnReconnect to '
+        'true, and both are inherited by nested providers', (tester) async {
+      late SwrConfig root;
+      late SwrConfig nested;
+      final connectivity = SwrConnectivity.fromStream(const Stream.empty());
+
+      await tester.pumpWidget(
+        SwrProvider(
+          config: const SwrConfig(),
+          child: Builder(
+            builder: (context) {
+              root = SwrProvider.of(context);
+              return SwrProvider(
+                config: SwrConfig(connectivity: connectivity),
+                child: SwrProvider(
+                  config: const SwrConfig(revalidateOnReconnect: false),
+                  child: Builder(
+                    builder: (context) {
+                      nested = SwrProvider.of(context);
+                      return const SizedBox();
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      expect(root.connectivity, isNull);
+      expect(root.revalidateOnReconnect, isTrue);
+      expect(nested.connectivity, same(connectivity));
+      expect(nested.revalidateOnReconnect, isFalse);
+    });
   });
 }
 

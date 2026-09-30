@@ -560,4 +560,33 @@ void main() {
 
     expect(probe.response.data, ['config:page-0']);
   });
+
+  testWidgets('an offline→online transition refetches the list', (
+    tester,
+  ) async {
+    final status = StreamController<bool>();
+    addTearDown(status.close);
+
+    await tester.pumpWidget(
+      _host(
+        probe,
+        getKey: _upTo(9),
+        pages: pages,
+        cache: cache,
+        config: SwrConfig(
+          connectivity: SwrConnectivity.fromStream(status.stream),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(pages.calls, ['page-0']);
+
+    status
+      ..add(false)
+      ..add(true);
+    await tester.pumpAndSettle();
+
+    expect(pages.calls, ['page-0', 'page-0']);
+    expect(probe.response.data, ['data:page-0']);
+  });
 }
