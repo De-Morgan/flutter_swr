@@ -288,6 +288,45 @@ if (!infinite.isReachingEnd)
 The example app's Users screen (people icon on the Store screen) shows it with `pull_to_refresh`
 against reqres.in.
 
+#### Ready-made widgets: `SwrInfiniteListView` and `SwrInfiniteGridView`
+
+The example app wraps `useSwrInfinite` and `pull_to_refresh`'s `SmartRefresher` in two reusable
+widgets: pull down refetches every page, pull up loads the next one, and the end of the list is
+detected for you. They live in the example app, not the package, because `pull_to_refresh` isn't a
+package dependency. To use them, copy
+[swr_infinite_view.dart](example/lib/src/widgets/swr_infinite_view.dart) into your app.
+
+```dart
+SwrInfiniteListView<UsersPage, User>(
+  getKey: UsersApi.pageKey,
+  fetcher: usersApi.fetchPage,
+  itemsOf: (page) => page.users, // flattens each page into items
+  itemBuilder: (context, user, index) => UserTile(user: user),
+)
+
+SwrInfiniteGridView<UsersPage, User>(
+  getKey: UsersApi.pageKey,
+  fetcher: usersApi.fetchPage,
+  itemsOf: (page) => page.users,
+  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2),
+  itemBuilder: (context, user, index) => UserCard(user: user),
+)
+```
+
+- `P` is the page type the fetcher returns; `I` is the item type drawn.
+- `fetcher`, `options` (`SwrInfiniteOptions`) and `config` go straight to `useSwrInfinite`.
+- Optional builders, with defaults: `loadingBuilder` (spinner), `errorBuilder(context, error, retry)`
+  (a retry panel, shown when the first load fails), `emptyBuilder` (shown inside the refresher, so
+  pull-down still works).
+- `skipError` (default `true`) keeps the items on screen when a later refresh or load-more fails.
+  Set it to `false` to show `errorBuilder` instead.
+- Every `SmartRefresher` property is passed through with its default (`controller`, `header`,
+  `footer`, `physics`, …), except that `enablePullUp` defaults to `true`. `onRefresh`/`onLoading`
+  run after the built-in refresh/load-more, not instead of it.
+- `SwrInfiniteListView` adds `separatorBuilder` and `padding`; `SwrInfiniteGridView` adds
+  `gridDelegate` and `padding`. For another layout, extend `SwrInfiniteView` and implement
+  `buildScrollable(context, items)`.
+
 ### Configuration: `SwrProvider` and `SwrConfig`
 
 Scope defaults to a subtree with `SwrProvider`, so individual `useSwr` calls don't need to repeat
@@ -426,17 +465,17 @@ flutter run
 
 ## flutter_swr vs. React SWR
 
-| React SWR                                 | flutter_swr                                                        |
-| ----------------------------------------- | ------------------------------------------------------------------ |
-| `useSWR(key, fetcher)`                    | `useSwr<T>(key, fetcher: fetcher)`                                 |
-| `<SWRConfig value={...}>`                 | `SwrProvider(config: SwrConfig(...))`                              |
-| `mutate` from `useSWRConfig()`            | top-level`mutate<T>(key, ...)`                                     |
-| `useSWRMutation(key, fetcher, options)`   | `useSwrMutation<T, Arg>(fetcher, key:, options:)` — see below      |
+| React SWR                                  | flutter_swr                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| `useSWR(key, fetcher)`                     | `useSwr<T>(key, fetcher: fetcher)`                                 |
+| `<SWRConfig value={...}>`                  | `SwrProvider(config: SwrConfig(...))`                              |
+| `mutate` from `useSWRConfig()`             | top-level`mutate<T>(key, ...)`                                     |
+| `useSWRMutation(key, fetcher, options)`    | `useSwrMutation<T, Arg>(fetcher, key:, options:)` — see below      |
 | `useSWRInfinite(getKey, fetcher, options)` | `useSwrInfinite<T>(getKey, fetcher:, options:)` — see below        |
-| `unstable_serialize(getKey)`              | `swrInfiniteKey(getKey)`                                           |
-| `revalidateOnFocus` (tab refocus)         | `revalidateOnFocus` (app resume)                                   |
-| `revalidateOnReconnect`                   | planned — see Roadmap                                              |
-| `data`/`error`/`isLoading`/`isValidating` | same fields on`SwrResponse<T>`, plus `when`/`map` pattern matching |
+| `unstable_serialize(getKey)`               | `swrInfiniteKey(getKey)`                                           |
+| `revalidateOnFocus` (tab refocus)          | `revalidateOnFocus` (app resume)                                   |
+| `revalidateOnReconnect`                    | planned — see Roadmap                                              |
+| `data`/`error`/`isLoading`/`isValidating`  | same fields on`SwrResponse<T>`, plus `when`/`map` pattern matching |
 
 `useSwrMutation` differs from `useSWRMutation` in these ways:
 
