@@ -9,6 +9,30 @@ widgets stay current on their own with no manual refresh logic.
 Pass a key and a fetcher to `useSwr`. The hook manages the request, caches the response, and keeps
 data fresh — you get `data`, `error`, and `isLoading` back to drive your UI.
 
+## Table of contents
+
+- [Why does this exist?](#why-does-this-exist)
+- [Get started](#get-started)
+- [Deep dive](#deep-dive)
+  - [Core concepts](#core-concepts)
+  - [`useSwr`](#useswr)
+  - [`SwrResponse<T>`](#swrresponset)
+  - [Mutation](#mutation)
+  - [`useSwrMutation`](#useswrmutation)
+  - [`useSwrInfinite` (pagination)](#useswrinfinite-pagination)
+    - [Ready-made widgets: `SwrInfiniteListView` and `SwrInfiniteGridView`](#ready-made-widgets-swrinfinitelistview-and-swrinfinitegridview)
+  - [Configuration: `SwrProvider` and `SwrConfig`](#configuration-swrprovider-and-swrconfig)
+  - [Conditional / dependent fetching](#conditional--dependent-fetching)
+  - [Automatic revalidation](#automatic-revalidation)
+  - [Revalidate on reconnect](#revalidate-on-reconnect)
+  - [Caching and deduplication](#caching-and-deduplication)
+  - [Persisted caching: SqfliteSwrCache](#persisted-caching-sqfliteswrcache)
+  - [Error handling and retry](#error-handling-and-retry)
+  - [A fuller example](#a-fuller-example)
+- [flutter_swr vs. React SWR](#flutter_swr-vs-react-swr)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Why does this exist?
 
 Flutter has no equivalent to SWR or React Query. The idiomatic pattern today is a `FutureBuilder`

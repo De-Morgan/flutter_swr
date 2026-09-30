@@ -364,7 +364,9 @@ void main() {
 
     final held = pages.hold('page-0');
     unawaited(probe.infinite.mutate(data: ['optimistic']));
-    await tester.pump();
+    // The cache write reaches the hook via a stream event (a microtask);
+    // a zero-duration pump flushes it before checking for a frame.
+    await tester.pump(Duration.zero);
     expect(probe.response.data, ['optimistic']);
 
     held.complete('fresh-0');

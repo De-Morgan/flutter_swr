@@ -1,4 +1,4 @@
-## Unreleased
+## 0.4.0 - 2026-09-30
 
 - Added revalidate-on-reconnect (React SWR's `revalidateOnReconnect`). Implement the new
   `SwrConnectivity` interface (a `Stream<bool>` of online status) with any package, such as
