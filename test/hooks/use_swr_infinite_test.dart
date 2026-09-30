@@ -364,7 +364,9 @@ void main() {
 
     final held = pages.hold('page-0');
     unawaited(probe.infinite.mutate(data: ['optimistic']));
-    await tester.pump();
+    // The cache write reaches the hook via a stream event (a microtask);
+    // a zero-duration pump flushes it before checking for a frame.
+    await tester.pump(Duration.zero);
     expect(probe.response.data, ['optimistic']);
 
     held.complete('fresh-0');
@@ -559,5 +561,34 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(probe.response.data, ['config:page-0']);
+  });
+
+  testWidgets('an offline→online transition refetches the list', (
+    tester,
+  ) async {
+    final status = StreamController<bool>();
+    addTearDown(status.close);
+
+    await tester.pumpWidget(
+      _host(
+        probe,
+        getKey: _upTo(9),
+        pages: pages,
+        cache: cache,
+        config: SwrConfig(
+          connectivity: SwrConnectivity.fromStream(status.stream),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(pages.calls, ['page-0']);
+
+    status
+      ..add(false)
+      ..add(true);
+    await tester.pumpAndSettle();
+
+    expect(pages.calls, ['page-0', 'page-0']);
+    expect(probe.response.data, ['data:page-0']);
   });
 }

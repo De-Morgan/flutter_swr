@@ -56,24 +56,16 @@ class AppLifecycleListener extends WidgetsBindingObserver {
 
   void _revalidateMountedKeys() {
     final now = DateTime.now();
-    for (final controller in registry.controllers) {
-      if (!controller.revalidateOnFocus) continue;
-      if (!registry.cache.hasWatchers(controller.key)) continue;
-      // A controller that hasn't had its first fetcher-bearing revalidate
-      // yet is about to get one from useSwr's own mount effect regardless —
-      // skipping it here avoids racing that effect and calling revalidate()
-      // with no fetcher to fall back on.
-      if (!controller.hasFetcher) continue;
-
+    registry.revalidateMountedKeys((controller) {
+      if (!controller.revalidateOnFocus) return false;
       final lastRevalidatedAt = _lastResumeRevalidatedAt[controller.key];
       if (lastRevalidatedAt != null &&
           now.difference(lastRevalidatedAt) < focusThrottleInterval) {
-        continue;
+        return false;
       }
-
       _lastResumeRevalidatedAt[controller.key] = now;
-      controller.revalidate();
-    }
+      return true;
+    });
   }
 }
 

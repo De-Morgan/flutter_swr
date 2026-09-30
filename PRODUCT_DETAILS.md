@@ -50,7 +50,7 @@ flutter_swr is built on top of [`flutter_hooks`](https://pub.dev/packages/flutte
 | **Global cache** ([advanced/cache](https://swr.vercel.app/docs/advanced/cache)) — a Map-like store shared by default across all `useSWR` calls, scoped by `<SWRConfig>` | A singleton `SwrCache` by default, with an optional `SwrProvider` (`InheritedWidget`) to scope a different cache instance to a subtree — same role as `<SWRConfig value={{ provider }}>`. |
 | **`useSWR` hook** | `useSwr<T>()`, a `flutter_hooks` custom hook, composable inside `HookWidget`/`HookBuilder`. |
 | **Revalidate on focus** (tab/window refocus) | Revalidate on **app resume** — `AppLifecycleState.resumed`, observed via `WidgetsBindingObserver`. This is the closest Flutter-native analogue to "user came back to this screen/app." |
-| **Revalidate on reconnect** (browser `online` event) | No Dart/Flutter core equivalent exists (unlike the browser, there's no OS-agnostic "online" event in the SDK). Modeled as an **optional adapter** on top of `connectivity_plus`, not a core dependency (see §12). |
+| **Revalidate on reconnect** (browser `online` event) | No Dart/Flutter core equivalent exists (unlike the browser, there's no OS-agnostic "online" event in the SDK). Modeled as a dependency-free **adapter interface** (`SwrConnectivity`). The user supplies the status source, for example `connectivity_plus` or `observe_internet_connectivity` (see §12). |
 | **Request deduplication** ([GitHub feature list](https://github.com/vercel/swr)) | Same concept: concurrent `useSwr` calls (or remounts) for the same key within the dedup window share one in-flight `Future` rather than issuing parallel requests. |
 | **Mutation** (`mutate`) ([mutation docs](https://swr.vercel.app/docs/mutation)) | Same concept, adapted to a bound value returned alongside the hook's state (see §7, §11) rather than a field on the response object. |
 | **Middleware** | **Excluded** — see §3. |
@@ -78,9 +78,9 @@ flutter_swr is built on top of [`flutter_hooks`](https://pub.dev/packages/flutte
 **Expected behavior**: When the app transitions to `AppLifecycleState.resumed`, all currently-mounted `useSwr` keys revalidate (subject to a throttle interval, mirroring `focusThrottleInterval`).
 **Priority**: MVP
 
-### Revalidate-on-reconnect (optional adapter)
-**Description**: Flutter-native analogue of SWR's `revalidateOnReconnect`, using `connectivity_plus`.
-**Expected behavior**: When connectivity transitions from offline to online, mounted keys revalidate. Ships as an opt-in adapter, not a hard dependency.
+### Revalidate-on-reconnect (pluggable adapter)
+**Description**: Flutter-native analogue of SWR's `revalidateOnReconnect`. The core package defines `SwrConnectivity`, a `Stream<bool>` of online status. Users implement it with whatever connectivity source they already use and pass it as `SwrConfig.connectivity`. `SwrConfig.revalidateOnReconnect` (default `true`) opts keys in or out.
+**Expected behavior**: When connectivity goes from offline to online, mounted keys revalidate. The stream's first value is only a baseline, and repeated values are ignored. Without a `connectivity`, nothing happens, and the core package takes on no dependency.
 **Priority**: Post-MVP
 
 ### Polling
@@ -396,7 +396,7 @@ final (profileAsync, _) = useSwr<Profile>(
 - **Cache storage**: a Map-like interface (`get`/`set`/`delete`/`keys`, mirroring [SWR's cache provider interface](https://swr.vercel.app/docs/advanced/cache)) so the default in-memory implementation can be swapped for a custom provider. Never mutated directly by consumers — all writes go through `mutate`.
 - **Cache lifetime**: entries live for the process lifetime by default (no automatic expiry); "staleness" is a separate, time-based flag (see below), not deletion.
 - **Stale data**: an entry is considered stale once older than a configurable freshness window (or immediately, if no such window is configured) — stale data is still served instantly, but triggers a background revalidation on next access.
-- **Revalidation triggers**: mount-if-stale (default on), app-resume (default on), reconnect (optional adapter), polling interval (opt-in), manual `mutate()`.
+- **Revalidation triggers**: mount-if-stale (default on), app-resume (default on), reconnect (via a user-supplied `SwrConnectivity`), polling interval (opt-in), manual `mutate()`.
 - **Deduplication**: concurrent requests for the same key within a `dedupingInterval` window (default mirrors SWR's ~2s) share one in-flight `Future` rather than issuing separate fetcher calls.
 - **Cache invalidation**: via `mutate(key)` with no data (own key) or `mutate(invalidate: [...])` (other keys) — see §7/§11. A broader "invalidate by predicate over keys" is Post-MVP.
 - **Manual refresh**: `mutate()` with no arguments on the bound value.
@@ -418,7 +418,7 @@ final (profileAsync, _) = useSwr<Profile>(
 | Concern | Core package or Flutter-specific integration? |
 | --- | --- |
 | **App resume** (focus-equivalent) | **Core.** `WidgetsBindingObserver`/`AppLifecycleState.resumed` is pure Flutter SDK — no extra dependency needed. |
-| **Network reconnect** | **Optional adapter**, not core. Flutter/Dart has no built-in "online" event (unlike the browser SWR runs in); a `flutter_swr_connectivity` (or similar) package built on `connectivity_plus` plugs into the same revalidation hook that app-resume uses. Kept separate so the core package has zero platform-channel dependencies. |
+| **Network reconnect** | **Pluggable adapter interface in core; no connectivity dependency.** Flutter/Dart has no built-in "online" event (unlike the browser SWR runs in). Core ships `SwrConnectivity` (a `Stream<bool>`), and the user implements it with `connectivity_plus`, `observe_internet_connectivity`, etc. Reconnect goes through the same `SwrControllerRegistry.revalidateMountedKeys` path that app-resume uses. This keeps the core package free of platform-channel dependencies without a second package to publish. |
 | **Polling** | **Core.** Plain `Timer.periodic`, paused when a key has no mounted subscribers. |
 | **Failed requests / retries** | **Core.** Exponential backoff by default (mirroring [SWR's error-handling](https://swr.vercel.app/docs/error-handling)), with a configurable max retry count and interval; can be disabled per call or globally. |
 | **Background/foreground transitions beyond resume** (e.g., pausing polling while backgrounded) | **Core**, via the same `WidgetsBindingObserver` — polling timers pause on `AppLifecycleState.paused` and resume (with an immediate revalidation) on `AppLifecycleState.resumed`. |
@@ -495,7 +495,7 @@ Roughly in priority order:
 1. ~~Optimistic updates + rollback convenience API.~~ Delivered via `useSwrMutation` (0.3.0).
 2. ~~`useSwrMutation` (imperative mutation hook).~~ Delivered (0.3.0).
 3. Polling (`refreshInterval`).
-4. Reconnect-triggered revalidation (`connectivity_plus` adapter package).
+4. ~~Reconnect-triggered revalidation.~~ Delivered via the `SwrConnectivity` adapter interface.
 5. `keepPreviousData` / `previousData`.
 6. Pluggable/persisted cache providers beyond the default in-memory store.
 7. Pagination / infinite loading (`useSwrInfinite`) — lowest priority given its complexity relative to how essential it is to SWR's core value proposition.
@@ -514,7 +514,7 @@ Middleware is not on either list — it is out of scope for this package entirel
 | Bound `mutate` | `SwrMutate<T>` record element | Yes | Own-key write; other-key invalidation via `invalidate: [...]`. |
 | Global `mutate` (`useSWRConfig`) | Top-level `mutate<T>(key, {data, revalidate})` function | Yes (minimal) | For mutating/invalidating outside a hook's scope. Reaches every cache the key is registered in — default or `SwrProvider`-scoped — a deliberate divergence from `useSWRConfig().mutate`'s single-scope reach. |
 | `revalidateOnFocus` | Revalidate on `AppLifecycleState.resumed` | Yes | Closest Flutter-native analogue to browser focus. |
-| `revalidateOnReconnect` | Optional `connectivity_plus`-based adapter | No | No core "online" event in Dart/Flutter; kept out of core deps. |
+| `revalidateOnReconnect` | `SwrConfig.revalidateOnReconnect` + user-supplied `SwrConfig.connectivity` | Yes (needs an adapter) | No core "online" event in Dart/Flutter; kept out of core deps. |
 | `revalidateIfStale` | Revalidate-on-mount-if-stale | Yes | |
 | `refreshInterval` (polling) | `Timer.periodic`-based polling option | No | |
 | Request deduplication | In-flight `Future` sharing per key | Yes | |
@@ -550,7 +550,7 @@ At the same time, the API should feel native to a Flutter developer who has neve
 - **Optimistic updates** (Post-MVP): optimistic value is visible immediately; rollback restores the exact pre-mutation value on failure.
 - **Error handling**: fetcher throwing surfaces via `error` while retaining last-good `data`; global `onError` callback fires.
 - **Pagination** (Post-MVP): `getKey` sequencing (index/cursor), `null` return stops fetching further pages, `size`/`setSize` correctness, parallel-mode independence from `previousPageData`.
-- **Lifecycle/network behavior**: simulated `AppLifecycleState` transitions trigger/pause revalidation and polling correctly; the optional connectivity adapter triggers revalidation only on offline→online transitions.
+- **Lifecycle/network behavior**: simulated `AppLifecycleState` transitions trigger/pause revalidation and polling correctly; the `SwrConnectivity` adapter triggers revalidation only on offline→online transitions.
 - **Concurrent requests**: two widgets mounting the same key simultaneously share one fetch and both receive the resolved data; a key change mid-flight cancels/ignores the now-irrelevant in-flight result rather than writing stale data into the new key's slot.
 
 ## 20. Documentation Requirements
@@ -566,7 +566,7 @@ At the same time, the API should feel native to a Flutter developer who has neve
 - **Naming**: `useSwr` vs. `useSWR` (casing) — does the public API mirror JS casing exactly or follow Dart's `lowerCamelCase` convention throughout (e.g. `useSwrMutation` vs. `useSWRMutation`)?
 - **Default cache scope**: implicit process-wide singleton cache with `SwrProvider` as purely optional, vs. requiring an explicit `SwrProvider` at the app root before any `useSwr` call works. Affects testability (isolated caches per test) and the "it just works with zero setup" goal.
 - **Key type strictness**: keep the key parameter as `Object?` (maximally flexible, matching SWR's permissiveness), or narrow it to a sealed `SwrKey` type for better compile-time safety at the cost of extra ceremony at call sites?
-- **Connectivity adapter packaging**: ship as `flutter_swr_connectivity` (separate pub package) vs. an optional import path within the same package gated behind a dependency the user must add themselves?
+- ~~**Connectivity adapter packaging**~~ — **Decided:** neither. Core ships a dependency-free `SwrConnectivity` interface (a `Stream<bool>` of online status), and users implement it with the connectivity package of their choice. Unlike a `connectivity_plus`-only adapter package, this doesn't pick a package for users, since packages disagree on "interface up" vs. "internet reachable". It also adds no second package to version. The example app implements it with `observe_internet_connectivity`.
 - **`keepPreviousData` default**: off by default (matches SWR) or on by default for Flutter's typically more "list navigation"-heavy UI patterns?
 - **Error typing**: keep `error` as `Object?` (matches SWR/JS's untyped catch), or introduce a typed `SwrError` wrapper carrying the underlying exception plus retry-count metadata?
 - **Minimum Dart/Flutter SDK**: the record-based `(SwrResponse<T>, SwrMutate<T>)` return type requires Dart 3's records/patterns — confirm the minimum supported SDK version reflects this.

@@ -1,5 +1,12 @@
-## Unreleased
+## 0.4.0 - 2026-09-30
 
+- Added revalidate-on-reconnect (React SWR's `revalidateOnReconnect`). Implement the new
+  `SwrConnectivity` interface (a `Stream<bool>` of online status) with any package, such as
+  `connectivity_plus` or `observe_internet_connectivity`, or use `SwrConnectivity.fromStream`. Then
+  pass it as `SwrConfig.connectivity`. On an offline→online transition, every mounted `useSwr` and
+  `useSwrInfinite` key revalidates. Set `SwrConfig.revalidateOnReconnect` (default `true`) to
+  `false` to opt out. The package adds no new dependencies.
+- Example app: reconnect revalidation using `observe_internet_connectivity`.
 - Added `useSwrInfinite<T>(getKey, {fetcher, options, config})`, a port of React SWR's
   `useSWRInfinite` for paginated lists. It returns `(SwrResponse<List<T>>, SwrInfinite<T>)`.
   `SwrInfinite` has `size`, `setSize(n)` (completes with the new response), a bound `mutate` that

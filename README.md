@@ -3,11 +3,35 @@
 **Flutter Hooks for data fetching** — a Dart port of [SWR](https://swr.vercel.app), Vercel's React
 data-fetching library, built on top of [`flutter_hooks`](https://pub.dev/packages/flutter_hooks).
 
-It revalidates on app resume and on a fixed interval, so widgets stay current on their own with no
-manual refresh logic.
+It revalidates when the app resumes, on a fixed interval, and when the device comes back online, so
+widgets stay current on their own with no manual refresh logic.
 
 Pass a key and a fetcher to `useSwr`. The hook manages the request, caches the response, and keeps
 data fresh — you get `data`, `error`, and `isLoading` back to drive your UI.
+
+## Table of contents
+
+- [Why does this exist?](#why-does-this-exist)
+- [Get started](#get-started)
+- [Deep dive](#deep-dive)
+  - [Core concepts](#core-concepts)
+  - [`useSwr`](#useswr)
+  - [`SwrResponse<T>`](#swrresponset)
+  - [Mutation](#mutation)
+  - [`useSwrMutation`](#useswrmutation)
+  - [`useSwrInfinite` (pagination)](#useswrinfinite-pagination)
+    - [Ready-made widgets: `SwrInfiniteListView` and `SwrInfiniteGridView`](#ready-made-widgets-swrinfinitelistview-and-swrinfinitegridview)
+  - [Configuration: `SwrProvider` and `SwrConfig`](#configuration-swrprovider-and-swrconfig)
+  - [Conditional / dependent fetching](#conditional--dependent-fetching)
+  - [Automatic revalidation](#automatic-revalidation)
+  - [Revalidate on reconnect](#revalidate-on-reconnect)
+  - [Caching and deduplication](#caching-and-deduplication)
+  - [Persisted caching: SqfliteSwrCache](#persisted-caching-sqfliteswrcache)
+  - [Error handling and retry](#error-handling-and-retry)
+  - [A fuller example](#a-fuller-example)
+- [flutter_swr vs. React SWR](#flutter_swr-vs-react-swr)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Why does this exist?
 
@@ -85,7 +109,8 @@ instantly gets the cached value and shares the same in-flight request.
   a `SwrProvider` (see below), you can omit this per call.
 - **`config`** — a per-call `SwrConfig` merged on top of the nearest `SwrProvider`'s config; any
   field you don't set falls through to the ambient value. This is where `dedupingInterval`,
-  `refreshInterval`, `retry`, `revalidateOnFocus`, and `onError`/`onSuccess` are set per call.
+  `refreshInterval`, `retry`, `revalidateOnFocus`, `revalidateOnReconnect`, and `onError`/`onSuccess`
+  are set per call.
 
 It returns a record: a `SwrResponse<T>` snapshot, and a `SwrMutate<T>` function bound to this call's key.
 
@@ -217,8 +242,8 @@ mutation settles, successfully or not, the key's mounted `useSwr` readers are re
 | `populateCacheWith`     | none                                             | `(result, current) => toCache`, for when the response isn't the cached shape.    |
 | `rollbackOnError`       | `true`                                           | Restore the pre-mutation value on failure.                                       |
 | `revalidate`            | `true`                                           | Revalidate the key's mounted readers afterwards. It isn't awaited.               |
-| `throwOnError`          | `true`                                           | Rethrow from `trigger`. When `false`, `trigger` completes with `null`.           |
-| `onSuccess` / `onError` | none                                             | Called for the latest trigger only, with `(data or error, key, arg)`.            |
+| `throwOnError`          | `true`                                           | Rethrow from`trigger`. When `false`, `trigger` completes with `null`.            |
+| `onSuccess` / `onError` | none                                             | Called for the latest trigger only, with`(data or error, key, arg)`.             |
 
 Options are set once, on the hook. `trigger` takes only the argument. To act on a single call's
 outcome, await it: `final saved = await trigger(arg);`, with `try`/`catch` for errors.
@@ -278,7 +303,7 @@ if (!infinite.isReachingEnd)
   `mutate(swrInfiniteKey(getKey)!)` to revalidate the list from elsewhere, or pass it as
   `useSwrMutation`'s `key` (with `T` = `List<Page>`) for optimistic list updates. `mutate(pageKey)`
   updates only that page's entry, not the list.
-- Revalidations (mount, app resume, polling) refetch only the first page and reuse cached pages for
+- Revalidations (mount, app resume, reconnect, polling) refetch only the first page and reuse cached pages for
   the rest. `SwrInfiniteOptions` changes that: `initialSize` (1), `revalidateFirstPage` (true),
   `revalidateAll` (false), `persistSize` (false; keep the page count when the first page's key
   changes) and `parallel` (false; fetch all pages at once, with `previousPageData` always `null`).
@@ -353,6 +378,8 @@ fall through — same as a per-call `config:` merges over the nearest provider.
 | `refreshInterval`       | `Duration?`                             | none (no polling)                         | Poll this key on a fixed interval while it has an active subscriber.                   |
 | `retry`                 | `SwrRetryPolicy?`                       | 5 attempts, exponential backoff up to 30s | Retry behavior on fetcher failure.                                                     |
 | `revalidateOnFocus`     | `bool?`                                 | `true`                                    | Whether resuming the app from the background revalidates this key.                     |
+| `connectivity`          | `SwrConnectivity?`                      | none (reconnect revalidation off)         | Your source of online/offline status, used by`revalidateOnReconnect` (see below).      |
+| `revalidateOnReconnect` | `bool?`                                 | `true`                                    | Whether coming back online revalidates this key. Needs a`connectivity`.                |
 | `onError` / `onSuccess` | callbacks                               | none                                      | Side-effect hooks fired on fetch failure/success.                                      |
 | `cache`                 | `SwrCache?`                             | shared`InMemoryCache`                     | Swap in a custom cache implementation (see below).                                     |
 
@@ -372,7 +399,7 @@ Flipping from `null` to a real key starts fetching immediately on that rebuild. 
 
 ### Automatic revalidation
 
-Two triggers are wired up for you with no extra setup:
+Three triggers keep mounted keys fresh:
 
 - **On app resume** — when the app returns to the foreground, every currently-mounted key with
   `revalidateOnFocus: true` (the default) revalidates, throttled to once per 5 seconds per key so
@@ -381,6 +408,58 @@ Two triggers are wired up for you with no extra setup:
   `config:`) to refetch on a fixed timer. Polling is ref-counted per key (only runs while at least
   one widget is subscribed) and automatically pauses while the app is backgrounded, resuming with
   an immediate revalidation when it comes back.
+- **On reconnect** — when the device comes back online, every mounted key with
+  `revalidateOnReconnect: true` (the default) revalidates. Dart has no built-in "online" event, so
+  this needs one line of setup: pass your connectivity source as `SwrConfig.connectivity` (see
+  below).
+
+### Revalidate on reconnect
+
+When the device comes back online, every mounted key with `revalidateOnReconnect: true` (the
+default) revalidates, like React SWR's `revalidateOnReconnect`. Dart has no built-in "online" event,
+and flutter_swr doesn't depend on any connectivity package. Instead, you tell it where online status
+comes from by implementing `SwrConnectivity`, which is a single `Stream<bool>` where `true` means online:
+
+```dart
+// With observe_internet_connectivity (checks that the internet is actually reachable):
+class InternetConnectivityAdapter extends SwrConnectivity {
+  @override
+  Stream<bool> get onConnectivityChanged =>
+      InternetConnectivity().observeInternetConnection;
+}
+
+// Or with connectivity_plus (reports the network interface only):
+class ConnectivityPlusAdapter extends SwrConnectivity {
+  @override
+  Stream<bool> get onConnectivityChanged => Connectivity()
+      .onConnectivityChanged
+      .map((results) => !results.contains(ConnectivityResult.none));
+}
+
+// Or wrap any existing stream:
+final connectivity = SwrConnectivity.fromStream(myOnlineStream);
+```
+
+Then pass it to a provider. Nested providers inherit it:
+
+```dart
+final connectivity = InternetConnectivityAdapter(); // create once, outside build
+
+SwrProvider(
+  config: SwrConfig(connectivity: connectivity),
+  child: const MaterialApp(home: HomeScreen()),
+);
+```
+
+- Only an offline→online transition revalidates. The stream's first value is taken as the starting
+  status, and repeated values are ignored.
+- flutter_swr listens to each `SwrConnectivity` instance once and never cancels, so create it once
+  (for example, in a static field) rather than inside `build`.
+- To opt a key out, pass `config: const SwrConfig(revalidateOnReconnect: false)` to `useSwr`.
+- Polling keeps running while offline. flutter_swr has no equivalent of React's `refreshWhenOffline` yet.
+
+The example app wires this up with [observe_internet_connectivity](https://pub.dev/packages/observe_internet_connectivity) in
+[internet_connectivity_adapter.dart](example/lib/src/connectivity/internet_connectivity_adapter.dart).
 
 ### Caching and deduplication
 
@@ -474,7 +553,7 @@ flutter run
 | `useSWRInfinite(getKey, fetcher, options)` | `useSwrInfinite<T>(getKey, fetcher:, options:)` — see below        |
 | `unstable_serialize(getKey)`               | `swrInfiniteKey(getKey)`                                           |
 | `revalidateOnFocus` (tab refocus)          | `revalidateOnFocus` (app resume)                                   |
-| `revalidateOnReconnect`                    | planned — see Roadmap                                              |
+| `revalidateOnReconnect`                    | `revalidateOnReconnect` + your `SwrConfig.connectivity` adapter    |
 | `data`/`error`/`isLoading`/`isValidating`  | same fields on`SwrResponse<T>`, plus `when`/`map` pattern matching |
 
 `useSwrMutation` differs from `useSWRMutation` in these ways:

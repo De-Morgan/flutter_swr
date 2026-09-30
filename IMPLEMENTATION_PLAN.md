@@ -233,9 +233,9 @@ This is the module where Phases 1–4 compose into the actual stale-while-revali
 
 ## Post-MVP Phases (build after Phase 12, same rigor)
 
-### Phase 15 — Reconnect Adapter (separate package or optional import)
+### Phase 15 — Reconnect Adapter
 
-**Files**: new package `flutter_swr_connectivity` (or `lib/src/lifecycle/connectivity_adapter.dart` behind a documented optional dependency — finalize per the Open Question in §21) depending on `connectivity_plus`.
+**Status**: implemented. There's no separate package: core ships the dependency-free `SwrConnectivity` interface in `lib/src/core/swr_connectivity.dart`, users plug in their own source through `SwrConfig.connectivity`, and the example app uses `observe_internet_connectivity` (see PRODUCT_DETAILS.md §21).
 
 Listens for offline→online transitions and calls the same revalidation path used by Phase 9's resume handler, so both triggers converge on one "revalidate all mounted keys, throttled" implementation rather than duplicating logic.
 

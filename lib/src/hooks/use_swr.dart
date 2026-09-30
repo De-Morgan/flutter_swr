@@ -5,6 +5,7 @@ import '../cache/key_normalizer.dart';
 import '../config/swr_config.dart';
 import '../config/swr_provider.dart';
 import '../core/revalidation_scheduler.dart';
+import '../core/swr_connectivity.dart';
 import '../core/swr_controller.dart';
 import '../lifecycle/app_lifecycle_listener.dart';
 import '../mutation/mutate.dart';
@@ -52,11 +53,14 @@ import 'swr_response.dart';
   final controller = useMemoized<SwrController<T>?>(() {
     if (normalizedKey == null) return null;
     ensureAppLifecycleListener(registry);
+    if (resolvedConfig.connectivity case final connectivity?) {
+      ensureReconnectListener(registry, connectivity);
+    }
     return registry.controllerFor<T>(
       normalizedKey,
       retryPolicy: resolvedConfig.retry!,
-      dedupingInterval: resolvedConfig.dedupingInterval!,
       revalidateOnFocus: resolvedConfig.revalidateOnFocus!,
+      revalidateOnReconnect: resolvedConfig.revalidateOnReconnect!,
     );
   }, [normalizedKey]);
 
