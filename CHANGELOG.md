@@ -1,3 +1,13 @@
+## 0.5.0 - 2026-10-25
+
+- **Breaking:** renamed `SwrConfig.revalidateOnFocus` (revalidate when the app resumes from the
+  background) to `SwrConfig.revalidateOnResume`. It still defaults to `true`.
+- Added a new `SwrConfig.revalidateOnFocus` (default `false`). When it's on, a `useSwr` or
+  `useSwrInfinite` call revalidates every time its widget becomes visible again, such as when its
+  tab is reselected in a bottom navigation bar or the route above it is popped. Visibility comes
+  from `Visibility.of` and `TickerMode`, so it works with `IndexedStack`, `Navigator` and go_router's
+  `StatefulShellRoute`.
+
 ## 0.4.0 - 2026-09-30
 
 - Added revalidate-on-reconnect (React SWR's `revalidateOnReconnect`). Implement the new

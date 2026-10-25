@@ -74,9 +74,13 @@ flutter_swr is built on top of [`flutter_hooks`](https://pub.dev/packages/flutte
 **Priority**: MVP
 
 ### Revalidate-on-app-resume
-**Description**: Flutter-native analogue of SWR's `revalidateOnFocus`.
+**Description**: Flutter-native analogue of SWR's `revalidateOnFocus`, configured with `SwrConfig.revalidateOnResume` (default `true`).
 **Expected behavior**: When the app transitions to `AppLifecycleState.resumed`, all currently-mounted `useSwr` keys revalidate (subject to a throttle interval, mirroring `focusThrottleInterval`).
 **Priority**: MVP
+
+### Revalidate-on-widget-focus
+**Description**: `SwrConfig.revalidateOnFocus` (default `false`) revalidates a hook's key every time its widget becomes visible again, e.g. its tab is reselected in a bottom navigation bar or the route above it is popped.
+**Expected behavior**: Visibility is read from `Visibility.of` and `TickerMode`. A hidden→visible transition revalidates the key, unthrottled; hiding it or rebuilding it while visible does not.
 
 ### Revalidate-on-reconnect (pluggable adapter)
 **Description**: Flutter-native analogue of SWR's `revalidateOnReconnect`. The core package defines `SwrConnectivity`, a `Stream<bool>` of online status. Users implement it with whatever connectivity source they already use and pass it as `SwrConfig.connectivity`. `SwrConfig.revalidateOnReconnect` (default `true`) opts keys in or out.
@@ -513,7 +517,7 @@ Middleware is not on either list — it is out of scope for this package entirel
 | `isValidating` | `SwrResponse.isValidating` | Yes | True for any in-flight fetch, with or without data. |
 | Bound `mutate` | `SwrMutate<T>` record element | Yes | Own-key write; other-key invalidation via `invalidate: [...]`. |
 | Global `mutate` (`useSWRConfig`) | Top-level `mutate<T>(key, {data, revalidate})` function | Yes (minimal) | For mutating/invalidating outside a hook's scope. Reaches every cache the key is registered in — default or `SwrProvider`-scoped — a deliberate divergence from `useSWRConfig().mutate`'s single-scope reach. |
-| `revalidateOnFocus` | Revalidate on `AppLifecycleState.resumed` | Yes | Closest Flutter-native analogue to browser focus. |
+| `revalidateOnFocus` | `SwrConfig.revalidateOnResume` (revalidate on `AppLifecycleState.resumed`) | Yes | Closest Flutter-native analogue to browser focus. `SwrConfig.revalidateOnFocus` instead means the widget becoming visible again (opt-in). |
 | `revalidateOnReconnect` | `SwrConfig.revalidateOnReconnect` + user-supplied `SwrConfig.connectivity` | Yes (needs an adapter) | No core "online" event in Dart/Flutter; kept out of core deps. |
 | `revalidateIfStale` | Revalidate-on-mount-if-stale | Yes | |
 | `refreshInterval` (polling) | `Timer.periodic`-based polling option | No | |

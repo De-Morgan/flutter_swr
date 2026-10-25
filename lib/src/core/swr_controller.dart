@@ -14,7 +14,7 @@ class SwrController<T> {
     required this.cache,
     required this.dedupManager,
     required this.retryPolicy,
-    this.revalidateOnFocus = true,
+    this.revalidateOnResume = true,
     this.revalidateOnReconnect = true,
     MutationTracker? mutations,
   }) : mutations = mutations ?? MutationTracker();
@@ -26,8 +26,8 @@ class SwrController<T> {
   final SwrRetryPolicy retryPolicy;
 
   /// Whether [AppLifecycleListener][] should revalidate this key when the
-  /// app resumes from the background. See [SwrConfig.revalidateOnFocus].
-  final bool revalidateOnFocus;
+  /// app resumes from the background. See [SwrConfig.revalidateOnResume].
+  final bool revalidateOnResume;
 
   /// Whether a `SwrConnectivity` offline→online transition should
   /// revalidate this key. See [SwrConfig.revalidateOnReconnect].
@@ -177,13 +177,13 @@ class SwrControllerRegistry {
   /// Returns the existing controller for [normalizedKey], or creates and
   /// registers one with the given per-key config if none exists yet.
   ///
-  /// [retryPolicy], [revalidateOnFocus] and [revalidateOnReconnect] only
+  /// [retryPolicy], [revalidateOnResume] and [revalidateOnReconnect] only
   /// take effect when a controller is created; once registered, a
   /// controller keeps the config it was created with.
   SwrController<T> controllerFor<T>(
     Object normalizedKey, {
     SwrRetryPolicy retryPolicy = const SwrRetryPolicy(),
-    bool revalidateOnFocus = true,
+    bool revalidateOnResume = true,
     bool revalidateOnReconnect = true,
   }) {
     final existing = _controllers[normalizedKey];
@@ -195,7 +195,7 @@ class SwrControllerRegistry {
       cache: cache,
       dedupManager: _dedupManager,
       retryPolicy: retryPolicy,
-      revalidateOnFocus: revalidateOnFocus,
+      revalidateOnResume: revalidateOnResume,
       revalidateOnReconnect: revalidateOnReconnect,
       mutations: mutations,
     );

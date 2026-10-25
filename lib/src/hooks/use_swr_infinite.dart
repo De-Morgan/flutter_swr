@@ -15,6 +15,7 @@ import '../infinite/infinite_key.dart';
 import '../infinite/swr_infinite_loader.dart';
 import '../infinite/swr_infinite_options.dart';
 import '../lifecycle/app_lifecycle_listener.dart';
+import '../lifecycle/use_revalidate_on_focus.dart';
 import '../mutation/mutate.dart';
 import 'swr_response.dart';
 
@@ -141,7 +142,7 @@ abstract class SwrInfinite<T> {
     return registry.controllerFor<List<T>>(
       listKey,
       retryPolicy: resolvedConfig.retry!,
-      revalidateOnFocus: resolvedConfig.revalidateOnFocus!,
+      revalidateOnResume: resolvedConfig.revalidateOnResume!,
       revalidateOnReconnect: resolvedConfig.revalidateOnReconnect!,
     );
   }, [listKey]);
@@ -191,6 +192,11 @@ abstract class SwrInfinite<T> {
     }
     return null;
   }, [listKey]);
+
+  useRevalidateOnFocus(
+    enabled: listKey != null && resolvedConfig.revalidateOnFocus!,
+    revalidate: () => controller!.revalidate(fetcher: latest.load),
+  );
 
   final refreshInterval = resolvedConfig.refreshInterval;
   useEffect(() {

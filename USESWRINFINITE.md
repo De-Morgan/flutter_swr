@@ -54,7 +54,7 @@ and `mutate(pageKey)` updating the page array.
   If omitted, it falls back to `SwrConfig.fetcher` (the keyed resolver) with the same
   runtime-type check `useSwr` does (`result is T`, else `StateError`).
 - `config` is the same per-call override `useSwr` takes: `dedupingInterval`, `retry`,
-  `refreshInterval`, `revalidateOnFocus`, `onSuccess`/`onError` all apply to the page list as a
+  `refreshInterval`, `revalidateOnResume`, `revalidateOnFocus`, `onSuccess`/`onError` all apply to the page list as a
   whole.
 - `getKey(0, null) == null` makes the hook **idle**, exactly like `useSwr(null)`: no controller, no
   subscription, no polling, and an idle response (`isLoading: false`). `size` still reports the

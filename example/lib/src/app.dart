@@ -24,7 +24,7 @@ class StoreApp extends StatelessWidget {
       config: SwrConfig(
         fetcher: storeFetcher.fetch,
         dedupingInterval: const Duration(seconds: 30),
-        revalidateOnFocus: true,
+        revalidateOnResume: true,
         connectivity: _connectivity,
         revalidateOnReconnect: false,
         cache: cache,
