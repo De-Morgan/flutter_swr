@@ -149,7 +149,7 @@ void main() {
       expect(invocations, 1);
     });
 
-    testWidgets('revalidateOnFocus: false skips resume revalidation', (
+    testWidgets('revalidateOnResume: false skips resume revalidation', (
       tester,
     ) async {
       final cache = InMemoryCache();
@@ -166,7 +166,7 @@ void main() {
                   invocations++;
                   return 'v$invocations';
                 },
-                config: const SwrConfig(revalidateOnFocus: false),
+                config: const SwrConfig(revalidateOnResume: false),
               );
               return const SizedBox();
             },

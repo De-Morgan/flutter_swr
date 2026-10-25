@@ -109,8 +109,8 @@ instantly gets the cached value and shares the same in-flight request.
   a `SwrProvider` (see below), you can omit this per call.
 - **`config`** — a per-call `SwrConfig` merged on top of the nearest `SwrProvider`'s config; any
   field you don't set falls through to the ambient value. This is where `dedupingInterval`,
-  `refreshInterval`, `retry`, `revalidateOnFocus`, `revalidateOnReconnect`, and `onError`/`onSuccess`
-  are set per call.
+  `refreshInterval`, `retry`, `revalidateOnResume`, `revalidateOnFocus`, `revalidateOnReconnect`,
+  and `onError`/`onSuccess` are set per call.
 
 It returns a record: a `SwrResponse<T>` snapshot, and a `SwrMutate<T>` function bound to this call's key.
 
@@ -362,7 +362,7 @@ SwrProvider(
   config: SwrConfig(
     fetcher: (key) => apiClient.get(key as String),
     dedupingInterval: const Duration(seconds: 30),
-    revalidateOnFocus: true,
+    revalidateOnResume: true,
   ),
   child: const MaterialApp(home: HomeScreen()),
 );
@@ -377,7 +377,8 @@ fall through — same as a per-call `config:` merges over the nearest provider.
 | `dedupingInterval`      | `Duration?`                             | 2s                                        | How long a cached result is considered fresh enough to skip an automatic revalidation. |
 | `refreshInterval`       | `Duration?`                             | none (no polling)                         | Poll this key on a fixed interval while it has an active subscriber.                   |
 | `retry`                 | `SwrRetryPolicy?`                       | 5 attempts, exponential backoff up to 30s | Retry behavior on fetcher failure.                                                     |
-| `revalidateOnFocus`     | `bool?`                                 | `true`                                    | Whether resuming the app from the background revalidates this key.                     |
+| `revalidateOnResume`    | `bool?`                                 | `true`                                    | Whether resuming the app from the background revalidates this key.                     |
+| `revalidateOnFocus`     | `bool?`                                 | `false`                                   | Whether the widget becoming visible again (e.g. its tab is reselected) revalidates.    |
 | `connectivity`          | `SwrConnectivity?`                      | none (reconnect revalidation off)         | Your source of online/offline status, used by`revalidateOnReconnect` (see below).      |
 | `revalidateOnReconnect` | `bool?`                                 | `true`                                    | Whether coming back online revalidates this key. Needs a`connectivity`.                |
 | `onError` / `onSuccess` | callbacks                               | none                                      | Side-effect hooks fired on fetch failure/success.                                      |
@@ -399,11 +400,17 @@ Flipping from `null` to a real key starts fetching immediately on that rebuild. 
 
 ### Automatic revalidation
 
-Three triggers keep mounted keys fresh:
+Four triggers keep mounted keys fresh:
 
 - **On app resume** — when the app returns to the foreground, every currently-mounted key with
-  `revalidateOnFocus: true` (the default) revalidates, throttled to once per 5 seconds per key so
+  `revalidateOnResume: true` (the default) revalidates, throttled to once per 5 seconds per key so
   rapid background/foreground cycling doesn't cause a revalidation storm.
+- **On focus** — with `revalidateOnFocus: true` (off by default), a `useSwr`/`useSwrInfinite`
+  call revalidates every time its widget becomes visible again: its tab is reselected in a bottom
+  navigation bar built on `IndexedStack` (or go_router's `StatefulShellRoute`), or the route pushed
+  on top of it is popped. It isn't throttled. Tabs that are disposed when hidden (such as
+  `TabBarView` pages without keep-alive) remount instead, which revalidates once
+  `dedupingInterval` has passed.
 - **Polling** — set `refreshInterval` (globally via `SwrConfig`, or per call via `useSwr`'s
   `config:`) to refetch on a fixed timer. Polling is ref-counted per key (only runs while at least
   one widget is subscribed) and automatically pauses while the app is backgrounded, resuming with
@@ -552,7 +559,7 @@ flutter run
 | `useSWRMutation(key, fetcher, options)`    | `useSwrMutation<T, Arg>(fetcher, key:, options:)` — see below      |
 | `useSWRInfinite(getKey, fetcher, options)` | `useSwrInfinite<T>(getKey, fetcher:, options:)` — see below        |
 | `unstable_serialize(getKey)`               | `swrInfiniteKey(getKey)`                                           |
-| `revalidateOnFocus` (tab refocus)          | `revalidateOnFocus` (app resume)                                   |
+| `revalidateOnFocus` (tab refocus)          | `revalidateOnResume` (app resume)                                  |
 | `revalidateOnReconnect`                    | `revalidateOnReconnect` + your `SwrConfig.connectivity` adapter    |
 | `data`/`error`/`isLoading`/`isValidating`  | same fields on`SwrResponse<T>`, plus `when`/`map` pattern matching |
 

@@ -8,6 +8,7 @@ import '../core/revalidation_scheduler.dart';
 import '../core/swr_connectivity.dart';
 import '../core/swr_controller.dart';
 import '../lifecycle/app_lifecycle_listener.dart';
+import '../lifecycle/use_revalidate_on_focus.dart';
 import '../mutation/mutate.dart';
 import 'swr_response.dart';
 
@@ -59,7 +60,7 @@ import 'swr_response.dart';
     return registry.controllerFor<T>(
       normalizedKey,
       retryPolicy: resolvedConfig.retry!,
-      revalidateOnFocus: resolvedConfig.revalidateOnFocus!,
+      revalidateOnResume: resolvedConfig.revalidateOnResume!,
       revalidateOnReconnect: resolvedConfig.revalidateOnReconnect!,
     );
   }, [normalizedKey]);
@@ -109,6 +110,11 @@ import 'swr_response.dart';
     }
     return null;
   }, [normalizedKey]);
+
+  useRevalidateOnFocus(
+    enabled: normalizedKey != null && resolvedConfig.revalidateOnFocus!,
+    revalidate: () => controller!.revalidate(fetcher: effectiveFetcher),
+  );
 
   final refreshInterval = resolvedConfig.refreshInterval;
   useEffect(() {

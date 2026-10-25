@@ -23,6 +23,7 @@ class SwrConfig {
     this.onError,
     this.onSuccess,
     this.cache,
+    this.revalidateOnResume,
     this.revalidateOnFocus,
     this.connectivity,
     this.revalidateOnReconnect,
@@ -52,10 +53,25 @@ class SwrConfig {
   final void Function(Object? data, Object key)? onSuccess;
   final SwrCache? cache;
 
-  /// Whether resuming from the background revalidates this key. Defaults
-  /// to `true`, matching React SWR's `revalidateOnFocus`. Only takes effect
+  /// Whether resuming the app from the background revalidates this key.
+  /// Defaults to `true`, the Flutter analogue of React SWR's
+  /// `revalidateOnFocus` (a browser tab regaining focus). Only takes effect
   /// when a [SwrController] is created for the key — like [retry], it
   /// can't be changed for a key once one exists.
+  final bool? revalidateOnResume;
+
+  /// Whether the calling widget becoming visible again revalidates its key,
+  /// e.g. every time its tab is selected in a bottom navigation bar, or its
+  /// route is uncovered by popping the route pushed on top of it. Defaults
+  /// to `false`.
+  ///
+  /// Visibility is read from `Visibility.of` and `TickerMode`, which
+  /// Flutter sets for hidden `IndexedStack` children, routes covered by an
+  /// opaque route, and go_router's `StatefulShellRoute` branches. Widgets that are disposed
+  /// when hidden (e.g. a `TabBarView` page without keep-alive) remount
+  /// instead, which already revalidates once [dedupingInterval] has passed.
+  ///
+  /// Unlike [revalidateOnResume], this is read on every build, per call.
   final bool? revalidateOnFocus;
 
   /// Where online/offline status comes from, for [revalidateOnReconnect].
@@ -67,7 +83,7 @@ class SwrConfig {
   /// Whether coming back online (an offline→online transition reported by
   /// [connectivity]) revalidates this key. Defaults to `true`, matching
   /// React SWR's `revalidateOnReconnect`, but has no effect without a
-  /// [connectivity]. Like [revalidateOnFocus], it only takes effect when a
+  /// [connectivity]. Like [revalidateOnResume], it only takes effect when a
   /// [SwrController] is created for the key.
   final bool? revalidateOnReconnect;
 
@@ -83,7 +99,8 @@ class SwrConfig {
     dedupingInterval: _defaultDedupingInterval,
     retry: _defaultRetry,
     cache: _defaultCache,
-    revalidateOnFocus: true,
+    revalidateOnResume: true,
+    revalidateOnFocus: false,
     revalidateOnReconnect: true,
   );
 
@@ -102,6 +119,7 @@ class SwrConfig {
       onError: child.onError ?? onError,
       onSuccess: child.onSuccess ?? onSuccess,
       cache: child.cache ?? cache,
+      revalidateOnResume: child.revalidateOnResume ?? revalidateOnResume,
       revalidateOnFocus: child.revalidateOnFocus ?? revalidateOnFocus,
       connectivity: child.connectivity ?? connectivity,
       revalidateOnReconnect:
